@@ -1,0 +1,30 @@
+{
+  "combine": "mean of raw predictions",
+  "members": [
+    {
+      "seed": 0,
+      "file": "mlp_seed0.pt",
+      "best_val_spearman_macro": 0.4572272724065319
+    },
+    {
+      "seed": 1,
+      "file": "mlp_seed1.pt",
+      "best_val_spearman_macro": 0.480119967438933
+    },
+    {
+      "seed": 2,
+      "file": "mlp_seed2.pt",
+      "best_val_spearman_macro": 0.46824807876999947
+    },
+    {
+      "seed": 3,
+      "file": "mlp_seed3.pt",
+      "best_val_spearman_macro": 0.4379145059444496
+    },
+    {
+      "seed": 4,
+      "file": "mlp_seed4.pt",
+      "best_val_spearman_macro": 0.4733696107551663
+    }
+  ]
+}
