@@ -173,6 +173,29 @@ def transcribe(video_path, whisper_model, device, language="en"):
     return clean_transcript(result["text"])
 
 
+def _get_models(models, checkpoint_dir, whisper_model, device):
+    """models를 안 주면 모듈 전역 캐시를 쓰고, 없으면 처음 한 번 로드한다. _LOCK을 잡은 상태에서 호출할 것."""
+    global _MODELS
+    if models is None:
+        if _MODELS is None:
+            _MODELS = load_models(checkpoint_dir, whisper_model, device)
+        models = _MODELS
+    return models
+
+
+def transcribe_videos(video_paths, models=None, checkpoint_dir=None, whisper_model="base", device=None, language="en"):
+    """영상 여러 개 -> 대본 텍스트 리스트 (video_paths와 같은 순서). STT만 하고 점수 분석은 하지 않는다.
+
+    UI가 텍스트를 먼저 보여 준 뒤 같은 텍스트를 run_session_inference(video_paths, transcripts=...)에 넘기면
+    STT를 다시 돌리지 않고 그 텍스트 그대로 점수 분석에 쓴다."""
+    video_paths = list(video_paths)
+    if not video_paths:
+        raise ValueError("video_paths가 비어 있음")
+    with _LOCK:
+        models = _get_models(models, checkpoint_dir, whisper_model, device)
+        return [transcribe(p, models["whisper"], models["device"], language=language) for p in video_paths]
+
+
 def run_inference(video_path, models=None, checkpoint_dir=None, whisper_model="base",
                   device=None, language="en", transcript=None):
     """영상 1개 -> 점수 dict (JSON 직렬화 가능).
@@ -181,12 +204,8 @@ def run_inference(video_path, models=None, checkpoint_dir=None, whisper_model="b
     (이후 호출은 재사용 — 서버처럼 반복 호출해도 매번 다시 로드하지 않음).
 
     transcript: 대본 텍스트를 직접 주면 Whisper STT를 건너뛴다(학습 때와 같은 대본으로 정확히 비교하는 검증용)."""
-    global _MODELS
     with _LOCK:
-        if models is None:
-            if _MODELS is None:
-                _MODELS = load_models(checkpoint_dir, whisper_model, device)
-            models = _MODELS
+        models = _get_models(models, checkpoint_dir, whisper_model, device)
         return _predict(video_path, models, language, transcript)
 
 

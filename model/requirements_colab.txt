@@ -16,3 +16,5 @@ opencv-contrib-python==4.11.0.86
 av==17.1.0
 # 학습 환경엔 없던, 새 영상 추론에만 추가로 필요한 것 (STT). ffmpeg는 Colab에 기본 설치돼 있음.
 openai-whisper
+# Colab에서 로컬 백엔드가 호출할 API 서버(code/serve_gradio.py)용. 5.50.0으로 로컬에서 STT/분석 호출 동작 확인함.
+gradio>=5.0,<6.0

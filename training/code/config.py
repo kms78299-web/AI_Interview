@@ -60,7 +60,7 @@ OPENFACE_BIN = os.environ.get("OPENFACE_BIN", "FeatureExtraction")
 
 # 클러스터에 sudo 권한이 없어서 OpenFace를 소스 빌드하는 대신, 공식 Docker
 # 이미지(algebr/openface)를 Singularity로 받아서 씀. 네이티브 바이너리
-# (OPENFACE_BIN)가 PATH에 없으면 이 .sif로 자동 대체 (video_features.py 참고).
+# (OPENFACE_BIN)가 PATH에 없으면 이 .sif로 자동 대체 (OpenFace는 현재 코드에서 쓰지 않음).
 #
 # 근데 이 이미지 안 모델 파일이 root:600 권한이라 setuid 없는 singularity로는
 # 못 읽음 (실제로 "Could not find CEN patch experts" 에러로 확인함).
@@ -139,9 +139,8 @@ INTERVIEW_LABEL_NAMES = [
 # Track 1: embed (MLP 입력용, frozen encoder forward만) — 새 extract_features.py
 # --track embed --modality {audio,text,video} --encoder <name>
 #
-# Track 2: stats(해석 가능한 통계, LLM 피드백용)는 기존 video_features.py/
-# audio_features.py(librosa 부분)/text_features.py(extract_text_stats_for_prompt)
-# 코드를 그대로 재사용 — 여기서 새로 정의 안 함.
+# Track 2: stats(해석 가능한 통계, LLM 피드백용)는 extract_stats.py가 audio_features.py(librosa 부분)/
+# text_features.py(extract_text_stats_for_prompt)/video_stats.py(MediaPipe)를 모아서 만든다 — 여기서 새로 정의 안 함.
 # ─────────────────────────────────────────────
 DEFAULT_FEATURES_DIR = "/ceph_data/kms78299/repos/GANG2/features"
 EMBED_DIM = 768  # 아래 세 인코더 전부 hidden_size=768
