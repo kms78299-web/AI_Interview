@@ -1,0 +1,18 @@
+# 학습/임베딩 추출에 실제로 쓴 환경(recruitview conda env)의 버전.
+# Colab 기본 버전과 달라서 로드가 안 되거나 임베딩이 미묘하게 달라지면 이 버전으로 맞출 것.
+# (특히 scaler.pkl은 scikit-learn 1.7.2로 저장됨 — 다른 버전이면 InconsistentVersionWarning이 뜰 수 있음)
+torch==2.5.1
+torchvision==0.20.1
+transformers==5.17.0
+huggingface_hub>=1.5.0,<2.0
+safetensors==0.8.0
+numpy==1.26.4
+pandas==2.2.3
+scipy==1.13.0
+scikit-learn==1.7.2
+librosa==0.11.0
+soundfile==0.14.0
+opencv-contrib-python==4.11.0.86
+av==17.1.0
+# 학습 환경엔 없던, 새 영상 추론에만 추가로 필요한 것 (STT). ffmpeg는 Colab에 기본 설치돼 있음.
+openai-whisper

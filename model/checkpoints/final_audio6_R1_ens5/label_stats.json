@@ -1,0 +1,19 @@
+{
+  "mean": {
+    "interview_score": -0.012144921347498894,
+    "answer_score": -0.0045621804893016815,
+    "speaking_skills": 0.0054691084660589695,
+    "confidence_score": 0.0041490704752504826,
+    "facial_expression": 0.0067214760929346085,
+    "overall_performance": -0.00011976486712228507
+  },
+  "std": {
+    "interview_score": 1.209404468536377,
+    "answer_score": 1.1886540651321411,
+    "speaking_skills": 1.2415344715118408,
+    "confidence_score": 1.0834472179412842,
+    "facial_expression": 1.135961651802063,
+    "overall_performance": 1.2253681421279907
+  },
+  "winsor_threshold": 1.5
+}

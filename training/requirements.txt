@@ -1,0 +1,35 @@
+# mediapipe>=1.0.0 부터 legacy Solutions API(mp.solutions.face_mesh 등)가 완전히
+# 삭제되고 새 Tasks API만 남았음. video_features.py의 MediaPipe fallback은
+# Solutions API를 쓰므로 반드시 0.10.x로 고정해서 설치해야 함.
+mediapipe==0.10.21
+numpy<2
+# opencv-python(cv2)이 아니라 opencv-contrib-python을 쓴다. mediapipe가 어차피
+# opencv-contrib-python을 의존성으로 깔고, 이 패키지가 opencv-python의 상위집합이라
+# 기능은 동일함. 두 패키지를 같이 깔면 둘 다 같은 cv2/ 경로에 파일을 써서 서로
+# 덮어쓰기 때문에(공식 문서에서도 동시 설치 금지) opencv-python은 빼야 한다.
+opencv-contrib-python
+librosa
+soundfile
+# 이 노드(ariel-v7) 드라이버가 CUDA 12.2까지만 지원해서, torch/torchvision은
+# pip 기본 인덱스가 아니라 cu121 빌드로 깔아야 GPU가 잡힌다:
+#   pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121
+torch
+torchvision
+# analyze_interviews_llm.py가 Qwen한테 video 콘텐츠를 직접 넣을 때, transformers가
+# torchvision의 비디오 디코더를 쓰는데 그게 PyAV(av 패키지)를 요구함.
+av
+transformers
+accelerate
+tqdm
+
+# ── compare_audio_features.py는 이 환경(recruitview) 그대로 쓰면 됨.
+#
+# extract_au_openface3.py / extract_au_pyfeat.py는 여기(이 requirements.txt,
+# recruitview 환경)에 "절대 설치하지 말 것": openface-test 0.1.26이
+# huggingface_hub==0.21.0을 정확히 못박아 요구하는데, 우리 transformers는
+# huggingface_hub>=1.5.0이 필요해서 정면 충돌 -> 실제로 recruitview 환경에
+# 설치해봤다가 `import transformers` 자체가 깨지는 사고가 남 (huggingface_hub가
+# 0.21.0으로 강제 다운그레이드됨). 완전히 별도의 conda 환경(예: openface3)에
+# 설치할 것 — extract_au_openface3.py 상단 docstring 참고.
+#   conda create -n openface3 python=3.10 -y && conda activate openface3
+#   pip install openface-test   # 또는 pip install py-feat (폴백)

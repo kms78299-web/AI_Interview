@@ -1,0 +1,8 @@
+{
+  "smoothing": 0.5,
+  "note": "a=0.5\ub294 session \uc2e4\ud5d8\uc5d0\uc11c val\ub85c \uc120\ud0dd. test\ub294 \ubcf4\uace0\uc6a9 1\ud68c.",
+  "val_single_clip_macro": 0.4910635008348328,
+  "val_session_smoothed_macro": 0.4983767471296538,
+  "test_single_clip_macro": 0.5315808050315499,
+  "test_session_smoothed_macro": 0.5529005429385897
+}

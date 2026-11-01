@@ -1,0 +1,351 @@
+{
+  "exp_name": "final_audio6_R1_ens5",
+  "seeds": [
+    0,
+    1,
+    2,
+    3,
+    4
+  ],
+  "regularization": {
+    "dropout": 0.3,
+    "weight_decay": 0.05,
+    "d_model": 256,
+    "lr": 0.001
+  },
+  "n_train": 1411,
+  "n_val": 296,
+  "n_test": 304,
+  "per_seed": [
+    {
+      "seed": 0,
+      "val": {
+        "spearman_interview_score": 0.4289570497643723,
+        "pearson_interview_score": 0.40020068072755677,
+        "spearman_answer_score": 0.5000465604333058,
+        "pearson_answer_score": 0.47617275999276226,
+        "spearman_speaking_skills": 0.46787740759373797,
+        "pearson_speaking_skills": 0.4015318915795439,
+        "spearman_confidence_score": 0.4473767042130802,
+        "pearson_confidence_score": 0.39133207053457364,
+        "spearman_facial_expression": 0.4433541141319447,
+        "pearson_facial_expression": 0.3870125899273601,
+        "spearman_overall_performance": 0.45575179830275087,
+        "pearson_overall_performance": 0.4061679157609903,
+        "spearman_macro": 0.4572272724065319,
+        "pearson_macro": 0.41040298475379783
+      },
+      "test": {
+        "spearman_interview_score": 0.5187906352332351,
+        "pearson_interview_score": 0.4693260732371446,
+        "spearman_answer_score": 0.4834206433124952,
+        "pearson_answer_score": 0.46015283781873983,
+        "spearman_speaking_skills": 0.4777651606807703,
+        "pearson_speaking_skills": 0.3736044117612417,
+        "spearman_confidence_score": 0.4806795036433668,
+        "pearson_confidence_score": 0.38124733136752864,
+        "spearman_facial_expression": 0.4682263790538166,
+        "pearson_facial_expression": 0.42856713433132704,
+        "spearman_overall_performance": 0.5089921554498608,
+        "pearson_overall_performance": 0.46754692320735836,
+        "spearman_macro": 0.4896457462289241,
+        "pearson_macro": 0.4300741186205566
+      }
+    },
+    {
+      "seed": 1,
+      "val": {
+        "spearman_interview_score": 0.4620604189004619,
+        "pearson_interview_score": 0.4392654834869103,
+        "spearman_answer_score": 0.5014518179333238,
+        "pearson_answer_score": 0.4913447786986586,
+        "spearman_speaking_skills": 0.47045564097869075,
+        "pearson_speaking_skills": 0.4416307196749253,
+        "spearman_confidence_score": 0.49743339226361427,
+        "pearson_confidence_score": 0.44639894356945514,
+        "spearman_facial_expression": 0.45686253937248866,
+        "pearson_facial_expression": 0.4350403522065082,
+        "spearman_overall_performance": 0.49245599518501826,
+        "pearson_overall_performance": 0.4321370301654567,
+        "spearman_macro": 0.480119967438933,
+        "pearson_macro": 0.4476362179669857
+      },
+      "test": {
+        "spearman_interview_score": 0.5026385204551923,
+        "pearson_interview_score": 0.4732289094383876,
+        "spearman_answer_score": 0.49243874722123027,
+        "pearson_answer_score": 0.4573255349850335,
+        "spearman_speaking_skills": 0.5077731118011357,
+        "pearson_speaking_skills": 0.40326335408032077,
+        "spearman_confidence_score": 0.49663684480409404,
+        "pearson_confidence_score": 0.41095615246473005,
+        "spearman_facial_expression": 0.48358231395756957,
+        "pearson_facial_expression": 0.4482551532351087,
+        "spearman_overall_performance": 0.5223290226144676,
+        "pearson_overall_performance": 0.4642873614788032,
+        "spearman_macro": 0.5008997601422817,
+        "pearson_macro": 0.4428860776137306
+      }
+    },
+    {
+      "seed": 2,
+      "val": {
+        "spearman_interview_score": 0.45426973054754566,
+        "pearson_interview_score": 0.3982184367112322,
+        "spearman_answer_score": 0.4749809680613968,
+        "pearson_answer_score": 0.4298542208606734,
+        "spearman_speaking_skills": 0.48185594861301706,
+        "pearson_speaking_skills": 0.4236542826340441,
+        "spearman_confidence_score": 0.4779897553165395,
+        "pearson_confidence_score": 0.426221577528162,
+        "spearman_facial_expression": 0.4437964671678411,
+        "pearson_facial_expression": 0.3922905122562348,
+        "spearman_overall_performance": 0.47659560291365677,
+        "pearson_overall_performance": 0.39506696916567147,
+        "spearman_macro": 0.46824807876999947,
+        "pearson_macro": 0.41088433319266965
+      },
+      "test": {
+        "spearman_interview_score": 0.5355907139969527,
+        "pearson_interview_score": 0.4800358928088613,
+        "spearman_answer_score": 0.47309550591914257,
+        "pearson_answer_score": 0.43209711143794316,
+        "spearman_speaking_skills": 0.5215418125778173,
+        "pearson_speaking_skills": 0.4062457476015429,
+        "spearman_confidence_score": 0.5137055915618719,
+        "pearson_confidence_score": 0.4151067589965365,
+        "spearman_facial_expression": 0.507753463585354,
+        "pearson_facial_expression": 0.44283958741181983,
+        "spearman_overall_performance": 0.5333358676684246,
+        "pearson_overall_performance": 0.463712096956582,
+        "spearman_macro": 0.5141704925515937,
+        "pearson_macro": 0.44000619920221423
+      }
+    },
+    {
+      "seed": 3,
+      "val": {
+        "spearman_interview_score": 0.4337451974792847,
+        "pearson_interview_score": 0.4072776978403176,
+        "spearman_answer_score": 0.44231023500121003,
+        "pearson_answer_score": 0.43801893012168563,
+        "spearman_speaking_skills": 0.43922209257278666,
+        "pearson_speaking_skills": 0.4122516742013233,
+        "spearman_confidence_score": 0.445174193281211,
+        "pearson_confidence_score": 0.40714965367082306,
+        "spearman_facial_expression": 0.41806318083066174,
+        "pearson_facial_expression": 0.40439217383531617,
+        "spearman_overall_performance": 0.44897213650154344,
+        "pearson_overall_performance": 0.38089956575799644,
+        "spearman_macro": 0.4379145059444496,
+        "pearson_macro": 0.40833161590457695
+      },
+      "test": {
+        "spearman_interview_score": 0.5379382486477559,
+        "pearson_interview_score": 0.4598894766876389,
+        "spearman_answer_score": 0.5111545270236764,
+        "pearson_answer_score": 0.45724899893696636,
+        "spearman_speaking_skills": 0.5275029103919746,
+        "pearson_speaking_skills": 0.4003195502895347,
+        "spearman_confidence_score": 0.5396301308806218,
+        "pearson_confidence_score": 0.43353605846021126,
+        "spearman_facial_expression": 0.5101031339117855,
+        "pearson_facial_expression": 0.4522569381271649,
+        "spearman_overall_performance": 0.5499287858961815,
+        "pearson_overall_performance": 0.4905187781701239,
+        "spearman_macro": 0.529376289458666,
+        "pearson_macro": 0.4489616334452733
+      }
+    },
+    {
+      "seed": 4,
+      "val": {
+        "spearman_interview_score": 0.4469477698362224,
+        "pearson_interview_score": 0.38017908070328693,
+        "spearman_answer_score": 0.5357054900476965,
+        "pearson_answer_score": 0.4951303296557857,
+        "spearman_speaking_skills": 0.4686649440655954,
+        "pearson_speaking_skills": 0.4035144855848971,
+        "spearman_confidence_score": 0.4489397466348983,
+        "pearson_confidence_score": 0.41032566743718346,
+        "spearman_facial_expression": 0.455038527167987,
+        "pearson_facial_expression": 0.4206501988338147,
+        "spearman_overall_performance": 0.48492118677859847,
+        "pearson_overall_performance": 0.41387855404263885,
+        "spearman_macro": 0.4733696107551663,
+        "pearson_macro": 0.4206130527096012
+      },
+      "test": {
+        "spearman_interview_score": 0.49521619337604245,
+        "pearson_interview_score": 0.4506852143934511,
+        "spearman_answer_score": 0.4721156579408052,
+        "pearson_answer_score": 0.4583057959552633,
+        "spearman_speaking_skills": 0.48791431840233784,
+        "pearson_speaking_skills": 0.3708789070406333,
+        "spearman_confidence_score": 0.47510410884770915,
+        "pearson_confidence_score": 0.4022849901931658,
+        "spearman_facial_expression": 0.48605756201095474,
+        "pearson_facial_expression": 0.43637283599878746,
+        "spearman_overall_performance": 0.49389335589177435,
+        "pearson_overall_performance": 0.4375510965840331,
+        "spearman_macro": 0.48505019941160393,
+        "pearson_macro": 0.4260131400275557
+      }
+    }
+  ],
+  "single_model_val": {
+    "spearman_interview_score": {
+      "mean": 0.4451960333055774,
+      "std": 0.012366359946054332
+    },
+    "pearson_interview_score": {
+      "mean": 0.4050282758938607,
+      "std": 0.01931014432501732
+    },
+    "spearman_answer_score": {
+      "mean": 0.49089901429538657,
+      "std": 0.031038405898222925
+    },
+    "pearson_answer_score": {
+      "mean": 0.4661042038659131,
+      "std": 0.02714340541606674
+    },
+    "spearman_speaking_skills": {
+      "mean": 0.4656152067647656,
+      "std": 0.014129447449255752
+    },
+    "pearson_speaking_skills": {
+      "mean": 0.4165166107349467,
+      "std": 0.014788181620523604
+    },
+    "spearman_confidence_score": {
+      "mean": 0.4633827583418686,
+      "std": 0.02082861602987759
+    },
+    "pearson_confidence_score": {
+      "mean": 0.4162855825480395,
+      "std": 0.01869332530415863
+    },
+    "spearman_facial_expression": {
+      "mean": 0.4434229657341847,
+      "std": 0.013847789290849679
+    },
+    "pearson_facial_expression": {
+      "mean": 0.40787716541184676,
+      "std": 0.01784045141060091
+    },
+    "spearman_overall_performance": {
+      "mean": 0.47173934393631345,
+      "std": 0.016736016376051283
+    },
+    "pearson_overall_performance": {
+      "mean": 0.40563000697855073,
+      "std": 0.017286541837842985
+    },
+    "spearman_macro": {
+      "mean": 0.463375887063016,
+      "std": 0.014765259114276558
+    },
+    "pearson_macro": {
+      "mean": 0.4195736409055263,
+      "std": 0.014659991385623076
+    }
+  },
+  "single_model_test": {
+    "spearman_interview_score": {
+      "mean": 0.5180348623418356,
+      "std": 0.017103583854288573
+    },
+    "pearson_interview_score": {
+      "mean": 0.4666331133130967,
+      "std": 0.010297603340374559
+    },
+    "spearman_answer_score": {
+      "mean": 0.4864450162834699,
+      "std": 0.01441645934979865
+    },
+    "pearson_answer_score": {
+      "mean": 0.45302605582678923,
+      "std": 0.010516712035236022
+    },
+    "spearman_speaking_skills": {
+      "mean": 0.5044994627708071,
+      "std": 0.019079344796624344
+    },
+    "pearson_speaking_skills": {
+      "mean": 0.3908623941546547,
+      "std": 0.015343056318980084
+    },
+    "spearman_confidence_score": {
+      "mean": 0.5011512359475327,
+      "std": 0.023478337169598497
+    },
+    "pearson_confidence_score": {
+      "mean": 0.4086262582964345,
+      "std": 0.017074781177483192
+    },
+    "spearman_facial_expression": {
+      "mean": 0.4911445705038961,
+      "std": 0.01577080425789679
+    },
+    "pearson_facial_expression": {
+      "mean": 0.4416583298208415,
+      "std": 0.008444640797260598
+    },
+    "spearman_overall_performance": {
+      "mean": 0.5216958375041417,
+      "std": 0.019325382904663093
+    },
+    "pearson_overall_performance": {
+      "mean": 0.4647232512793801,
+      "std": 0.01681023946586466
+    },
+    "spearman_macro": {
+      "mean": 0.5038284975586139,
+      "std": 0.01626037484706197
+    },
+    "pearson_macro": {
+      "mean": 0.43758823378186607,
+      "std": 0.008410857839993634
+    }
+  },
+  "ensemble_val": {
+    "spearman_interview_score": 0.4685851261799342,
+    "pearson_interview_score": 0.4321552861728097,
+    "spearman_answer_score": 0.5188303695255809,
+    "pearson_answer_score": 0.49943252162458346,
+    "spearman_speaking_skills": 0.497650635726327,
+    "pearson_speaking_skills": 0.44742272410971623,
+    "spearman_confidence_score": 0.48964640560974304,
+    "pearson_confidence_score": 0.44746335111261515,
+    "spearman_facial_expression": 0.47331844247773996,
+    "pearson_facial_expression": 0.4395569283749267,
+    "spearman_overall_performance": 0.49835002548967156,
+    "pearson_overall_performance": 0.43340475960988967,
+    "spearman_macro": 0.4910635008348328,
+    "pearson_macro": 0.4499059285007568
+  },
+  "ensemble_test": {
+    "spearman_interview_score": 0.5445114310970299,
+    "pearson_interview_score": 0.4914275957811254,
+    "spearman_answer_score": 0.5136622373466141,
+    "pearson_answer_score": 0.47843163294838065,
+    "spearman_speaking_skills": 0.5314496389533687,
+    "pearson_speaking_skills": 0.41317510068633945,
+    "spearman_confidence_score": 0.5303664242746138,
+    "pearson_confidence_score": 0.43290273020632825,
+    "spearman_facial_expression": 0.5182016158949058,
+    "pearson_facial_expression": 0.4681772818058373,
+    "spearman_overall_performance": 0.5512934826227675,
+    "pearson_overall_performance": 0.4907190756190771,
+    "spearman_macro": 0.5315808050315499,
+    "pearson_macro": 0.46247223617451466
+  },
+  "test_spearman_agg": {
+    "spearman_macro": {
+      "mean": 0.5315808050315499,
+      "std": 0.0
+    }
+  },
+  "note": "\uad6c\uc131\uc740 run_combo.py\uc5d0\uc11c val \uae30\uc900\uc73c\ub85c \uace8\ub790\ub2e4(audio 6\uce35, \uaddc\uc81c R1). test\ub294 \ubaa8\ub378 \uc120\ud0dd \ud6c4 1\ud68c \ud3c9\uac00. \uc559\uc0c1\ube14 \uc218\uce58\ub294 \ub2e8\uc77c \uc2e4\ud604\uac12\uc774\ub77c \ud45c\uc900\ud3b8\ucc28 \uc5c6\uc74c."
+}

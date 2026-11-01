@@ -1,0 +1,31 @@
+{
+  "encoders": [
+    "wav2vec2-base",
+    "bert-base-uncased",
+    "videomae"
+  ],
+  "modality_dims": {
+    "text": 768,
+    "audio": 768,
+    "video": 768
+  },
+  "fusion": "prefusion",
+  "d_model": 256,
+  "transformer_layers": 1,
+  "n_heads": 4,
+  "dropout": 0.3,
+  "weight_decay": 0.05,
+  "lr": 0.001,
+  "max_epochs": 30,
+  "patience": 5,
+  "seeds": [
+    0,
+    1,
+    2,
+    3,
+    4
+  ],
+  "audio_layer": 6,
+  "audio_pool": "mean",
+  "regularization": "R1"
+}
