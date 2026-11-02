@@ -188,5 +188,24 @@ result = client.predict(files, json.dumps(texts), "", True, api_name="/analyze")
 }
 ```
 
-## LLM 호출은 백엔드가 한다
-`videos[i].llm_prompt`를 LLM에 그대로 보내면 된다. 프롬프트에는 "측정값을 점수의 원인으로 단정하지 말 것" 같은 규칙과, 답변 내용이 질문에 맞는지를 먼저 평가하게 하는 규칙(질문을 이해 못 했다고 답한 경우 등)이 이미 들어 있다. 질문 텍스트를 `questions_json`으로 주면 내용 평가가 더 정확해진다. 점수는 참가자 집단 대비 상대 위치이며 정확도가 중간 수준이라, 합격/불합격 판단 같은 용도로 쓰지 않는다.
+## LLM(Gemini) 호출은 백엔드가 한다
+`videos[i].llm_prompt`를 **수정하지 말고 그대로** Gemini에 보낸다(답변마다 1번 호출). 프롬프트가 **JSON만 출력**하도록 지시하므로, 호출할 때 JSON 모드(`response_mime_type="application/json"`)를 켜고 응답을 `json.loads`로 파싱하면 된다.
+
+Gemini 응답(JSON) 형식:
+```json
+{
+  "content_rating": "적절 | 부분적 | 부적절",
+  "content_reason": "내용 평가 이유 한 줄",
+  "overall_band": "상 | 중 | 하",
+  "band_reason": "종합 평가 이유 한 줄 (모델 점수와 다르면 왜 다른지)",
+  "text":  {"strength": "...", "improvement": "..."},
+  "audio": {"strength": "...", "improvement": "..."},
+  "video": {"strength": "...", "improvement": "..."},
+  "summary": "종합 조언 2~3문장"
+}
+```
+- **화면 표시 권장**: 모델 점수(0~100, 80% 범위)는 "**예측 위치**", Gemini의 `overall_band`는 "**종합 평가**", `content_rating`은 "**내용 평가**"로 이름을 나눠 보여 준다. 모델의 `band`(상/중/하)와 Gemini의 `overall_band`는 서로 다른 값이라 같은 라벨로 섞어 쓰지 않는다.
+- 점수는 높은데 `overall_band`가 낮을 수 있다(예: 질문을 이해 못 했다고 답한 경우). 이때 `band_reason`을 함께 보여 주면 된다.
+- 규칙: 내용이 `부적절`이면 `overall_band`는 `하`, `부분적`이면 `상`이 나오지 않는다.
+- 파싱 실패에 대비해 한 번 재시도하고, 계속 실패하면 해당 영상의 LLM 결과만 비워 둔다. temperature는 낮게(0.3~0.5) 권장한다.
+- `overall_band`는 **정답과 비교해 검증한 값이 아니다.** 모델 점수(순위 상관 약 0.53)와 달리 정확도 수치가 없으므로 "LLM이 내용을 보완해서 낸 의견"으로 표시한다. 점수는 참고용이며 합격/불합격 판단에 쓰지 않는다.
