@@ -90,15 +90,21 @@ def to_percentile(reference, group, key, value):
 # ───────────── LLM 프롬프트 ─────────────
 
 STAT_LABELS = {
-    "audio": {"speaking_rate_wpm": "말 속도(분당 단어 수)", "silence_ratio": "침묵 비율", "pitch_std": "음높이 변동",
+    "audio": {"speaking_rate_wpm": "말 속도(분당 단어 수)", "silence_ratio": "침묵 비율",
               "pitch_mean": "평균 음높이(Hz)", "rms_mean": "평균 음량", "rms_std": "음량 변동", "duration_sec": "답변 길이(초)"},
     "text": {"answer_length": "답변 단어 수", "filler_count": "군더더기 말(um, like 등) 횟수",
              "vocab_diversity": "어휘 다양성(서로 다른 단어 비율)"},
-    "video": {"gaze_away_ratio": "시선이 정면에서 크게 벗어난 시간 비율", "gaze_off_center_mean": "평균 시선 이탈 정도",
+    "video": {"gaze_away_ratio": "시선이 정면에서 크게 벗어난 시간 비율", "gaze_x_std": "시선의 좌우 흔들림",
               "head_motion": "머리 움직임", "head_yaw_mean_abs": "고개를 좌우로 돌린 정도", "head_roll_std": "고개 갸웃거림",
               "blink_rate_per_min": "분당 눈 깜빡임(근사)", "mouth_width_std": "입 모양 변화(표정 변화의 근사)",
               "face_detected_ratio": "얼굴이 인식된 프레임 비율"},
 }
+
+
+# 데이터셋 기준표로 위치를 말하면 안 되는 항목: filler_count는 데이터셋 대본에서 군더더기 말이 이미 제거돼 거의 항상 0이고,
+# face_detected_ratio는 전부 1.0이라 분포 정보가 없다. (값 자체는 프롬프트에 그대로 준다.)
+# 제외한 항목: pitch_std(음높이 추적이 옥타브를 건너뛰는 오류가 섞임), gaze_y_std/gaze_off_center_mean(눈 감은 프레임에서 계산이 불안정).
+NO_PERCENTILE = {"filler_count", "face_detected_ratio"}
 
 
 def build_feedback_prompt(stats, model_result=None, question=None, reference=None):
@@ -111,9 +117,9 @@ def build_feedback_prompt(stats, model_result=None, question=None, reference=Non
             if key not in stats[group]:
                 continue
             v = stats[group][key]
-            pct = to_percentile(reference, group, key, v) if reference else None
+            pct = to_percentile(reference, group, key, v) if reference and key not in NO_PERCENTILE else None
             lines.append(f"- [{group}] {label}: {round(v, 3) if isinstance(v, float) else v}"
-                         + (f" (참가자 중 상위 {100 - pct}% 위치)" if pct is not None else ""))
+                         + (f" (참가자 {pct}번째 백분위, 100에 가까울수록 값이 큰 편)" if pct is not None else ""))
     t = stats["text"]
     extras = []
     if t.get("filler_words"):
