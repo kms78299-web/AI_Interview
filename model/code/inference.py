@@ -40,6 +40,7 @@ import json
 import math
 import os
 import pickle
+import re
 import sys
 import threading
 
@@ -173,6 +174,29 @@ def transcribe(video_path, whisper_model, device, language="en"):
     return clean_transcript(result["text"])
 
 
+def _get_models(models, checkpoint_dir, whisper_model, device):
+    """models를 안 주면 모듈 전역 캐시를 쓰고, 없으면 처음 한 번 로드한다. _LOCK을 잡은 상태에서 호출할 것."""
+    global _MODELS
+    if models is None:
+        if _MODELS is None:
+            _MODELS = load_models(checkpoint_dir, whisper_model, device)
+        models = _MODELS
+    return models
+
+
+def transcribe_videos(video_paths, models=None, checkpoint_dir=None, whisper_model="base", device=None, language="en"):
+    """영상 여러 개 -> 대본 텍스트 리스트 (video_paths와 같은 순서). STT만 하고 점수 분석은 하지 않는다.
+
+    UI가 텍스트를 먼저 보여 준 뒤 같은 텍스트를 run_session_inference(video_paths, transcripts=...)에 넘기면
+    STT를 다시 돌리지 않고 그 텍스트 그대로 점수 분석에 쓴다."""
+    video_paths = list(video_paths)
+    if not video_paths:
+        raise ValueError("video_paths가 비어 있음")
+    with _LOCK:
+        models = _get_models(models, checkpoint_dir, whisper_model, device)
+        return [transcribe(p, models["whisper"], models["device"], language=language) for p in video_paths]
+
+
 def run_inference(video_path, models=None, checkpoint_dir=None, whisper_model="base",
                   device=None, language="en", transcript=None):
     """영상 1개 -> 점수 dict (JSON 직렬화 가능).
@@ -181,12 +205,8 @@ def run_inference(video_path, models=None, checkpoint_dir=None, whisper_model="b
     (이후 호출은 재사용 — 서버처럼 반복 호출해도 매번 다시 로드하지 않음).
 
     transcript: 대본 텍스트를 직접 주면 Whisper STT를 건너뛴다(학습 때와 같은 대본으로 정확히 비교하는 검증용)."""
-    global _MODELS
     with _LOCK:
-        if models is None:
-            if _MODELS is None:
-                _MODELS = load_models(checkpoint_dir, whisper_model, device)
-            models = _MODELS
+        models = _get_models(models, checkpoint_dir, whisper_model, device)
         return _predict(video_path, models, language, transcript)
 
 
@@ -359,6 +379,90 @@ def run_session_inference(video_paths, smoothing=None, transcripts=None, **kwarg
         explanation = head + "(calibration.json과 percentile_reference_session.json이 없어 백분위는 계산하지 못했습니다.)"
     return {"session": {"n_videos": len(results), "smoothing": a, "scores": session_scores},
             "videos": videos, "explanation": explanation}
+
+
+MIN_WORDS, MIN_SECONDS = 13, 7.0  # 데이터셋 하위 5% 기준. 이보다 짧은 답변은 점수를 내지 않는다(아래 설명 참고)
+
+
+def _too_short(text, video_path, min_words, min_seconds):
+    """점수를 내면 안 되는 이유 리스트(비어 있으면 통과).
+
+    학습 데이터에서 답변이 짧을수록 정답 점수가 높았고(13단어 미만은 정답 평균 백분위 85), 모델이 그 경향을 배워서
+    아주 짧은 답변에 높은 점수를 준다. 이런 입력은 점수가 의미 없어서 점수 대신 이유를 돌려준다."""
+    reasons = []
+    n_words = len(re.findall(r"[A-Za-z가-힣']+", text or ""))
+    if min_words and n_words < min_words:
+        reasons.append(f"대본이 {n_words}단어로 너무 짧음(기준 {min_words}단어 이상)")
+    if min_seconds:
+        from extract_stats import _duration_sec
+        duration = _duration_sec(video_path)
+        if 0 < duration < min_seconds:
+            reasons.append(f"영상이 {duration:.1f}초로 너무 짧음(기준 {min_seconds:.0f}초 이상)")
+    return reasons
+
+
+def analyze_session(video_paths, transcripts=None, questions=None, with_stats=True, guard=True,
+                    min_words=MIN_WORDS, min_seconds=MIN_SECONDS, **kwargs):
+    """영상 N개(질문 순서) -> run_session_inference 결과 + 영상별 통계(stats) + LLM 프롬프트(llm_prompt).
+
+    transcripts: STT 텍스트(transcribe_videos 결과)를 주면 그대로 재사용한다. 없으면 STT부터 한다.
+    questions: 질문 텍스트 리스트(선택, video_paths와 같은 순서). 주면 프롬프트에 질문이 들어간다.
+    with_stats=False면 통계/프롬프트 없이 점수 분석만 한다.
+    guard=True(기본): 너무 짧은 답변(min_words 단어 미만 또는 min_seconds초 미만)은 점수를 내지 않고
+      scores=None, skipped=True, warning에 이유를 담는다. 이런 영상은 세션 점수 계산에서도 제외한다.
+      그래도 with_stats면 통계와 llm_prompt(점수 없는 버전)는 만들어서 LLM이 내용을 평가할 수 있게 한다.
+    통계 추출이 한 영상에서 실패해도 전체 분석은 유지하고, 그 영상은 stats=None, stats_error에 이유를 담는다."""
+    video_paths = list(video_paths)
+    if questions is not None and len(questions) != len(video_paths):
+        raise ValueError("questions 길이가 video_paths와 다름")
+    model_kwargs = {k: kwargs[k] for k in ("models", "checkpoint_dir", "whisper_model", "device", "language") if k in kwargs}
+
+    skipped = {}
+    if guard:
+        if transcripts is None:
+            transcripts = transcribe_videos(video_paths, **model_kwargs)
+        for i, path in enumerate(video_paths):
+            reasons = _too_short(transcripts[i], path, min_words, min_seconds)
+            if reasons:
+                skipped[i] = reasons
+    valid = [i for i in range(len(video_paths)) if i not in skipped]
+
+    if not skipped:
+        result = run_session_inference(video_paths, transcripts=transcripts, **kwargs)
+    else:
+        sub = (run_session_inference([video_paths[i] for i in valid], transcripts=[transcripts[i] for i in valid], **kwargs)
+               if valid else None)
+        videos, vi = [], 0
+        for i, path in enumerate(video_paths):
+            if i in skipped:
+                videos.append({"video": path, "transcript": clean_transcript(transcripts[i]), "scores": None,
+                               "single_clip_percentile": None, "skipped": True, "warning": "; ".join(skipped[i])})
+            else:
+                videos.append(sub["videos"][vi])
+                vi += 1
+        note = (f"{len(skipped)}개 답변은 너무 짧아 점수를 내지 않았고 세션 점수 계산에서도 제외했습니다"
+                "(이 모델은 학습 데이터의 경향상 아주 짧은 답변에 점수를 높게 주기 때문입니다).")
+        result = {"session": ({**sub["session"], "n_skipped": len(skipped)} if sub else
+                              {"n_videos": 0, "n_skipped": len(skipped), "smoothing": None, "scores": None}),
+                  "videos": videos, "explanation": ((sub["explanation"] + " ") if sub else "") + note}
+    if not with_stats:
+        return result
+
+    from extract_stats import build_feedback_prompt, extract_stats
+    models = kwargs.get("models") or _MODELS
+    checkpoint_dir = (models or {}).get("checkpoint_dir") or kwargs.get("checkpoint_dir") or _default_checkpoint_dir()
+    reference = _load_json(checkpoint_dir, "stats_reference.json")
+    for i, video in enumerate(result["videos"]):
+        try:
+            stats = extract_stats(video_paths[i], video["transcript"])
+            video["stats"] = stats
+            video["llm_prompt"] = build_feedback_prompt(
+                stats, {"scores": video["scores"]} if video["scores"] else None,
+                None if questions is None else questions[i], reference)
+        except Exception as e:  # 얼굴 미검출 등: 이 영상의 통계만 포기
+            video["stats"], video["llm_prompt"] = None, None
+            video["stats_error"] = f"{type(e).__name__}: {e}"
+    return result
 
 
 def build_result(raw_scores, checkpoint_dir):

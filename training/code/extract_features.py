@@ -11,10 +11,8 @@ Track 1 (embed, MLP 입력용 — 지금 구현됨):
   - 저장: features/embed/{encoder}/{id}.npy (float32, shape=(768,))
   - 이미 있는 결과는 스킵(resume), 에러난 샘플은 로그 남기고 스킵
 
-Track 2 (stats, LLM 피드백용 — 아직 미구현, 다음 작업):
-  기존 video_features.py(MediaPipe)/audio_features.py(librosa)/
-  text_features.py(extract_text_stats_for_prompt)를 재사용해서
-  features/stats/{id}.json 으로 저장할 예정.
+Track 2 (stats, LLM 피드백용): extract_stats.py가 audio(librosa)/text(대본 통계)/video(video_stats.py, MediaPipe)를
+  features/stats/{id}.json 으로 저장한다. (--track stats는 extract_stats.run_batch로 위임)
 
 주의: 예전 extract_features.py(video/audio/text npy를 recruitview_features/ +
 audio_embeddings/ 에 한 번에 저장하던 단일 파이프라인)는 code/extract_features_legacy.py
@@ -181,9 +179,8 @@ def run_embed_track(args):
 
 
 def run_stats_track(args):
-    print("[ERROR] --track stats 는 아직 구현 안 됨 (다음 작업). --track embed 만 지금 가능.",
-          file=sys.stderr)
-    sys.exit(1)
+    from extract_stats import run_batch
+    run_batch(args)
 
 
 def main():
