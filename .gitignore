@@ -6,3 +6,25 @@ features/
 *.npy
 *.mp4
 *.out
+
+# Local application dependencies, generated output, and recordings
+node_modules/
+.venv/
+dist/
+build/
+.cache/
+.vite/
+*.tsbuildinfo
+*.log
+uploads/
+.env.*
+!.env.example
+
+# Local datasets and design captures (can contain camera images)
+dataset예시영상/
+recruitview_features/
+metadata.jsonl
+디자인자료/
+웹 디자인/
+*.webm
+*.zip

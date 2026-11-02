@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="ko">
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>분석 대기 화면 · 테스트 미리보기</title>
+<div style="padding:10px;font:12px system-ui;background:#eeeaf4">화면 확인용 테스트 · 모델 실행 없음 <button id="stt">텍스트 변환 중</button> <button id="texts">텍스트 준비 완료</button> <button id="error">평가 실패</button></div>
+<div id="root"></div>
+<script type="module">
+import React from 'react'
+import {createRoot} from 'react-dom/client'
+import {Analysis} from '/src/App.tsx'
+import {interviewCategories} from '/src/interviewApi.ts'
+import '/src/index.css'
+const questions=['Tell me about yourself.','What motivates you to do your best work?','Tell me about a time you worked through a team conflict.','Describe a difficult problem you solved.','How do you adapt when priorities suddenly change?']
+const session={id:'analysis-preview',questions:questions.map((question,i)=>({id:`q${i+1}`,question,category:interviewCategories[i].category,order:i+1}))}
+const samples=["I am a computer science student interested in building useful services.\nIn our capstone project, I worked with my team to develop an English interview practice service.","I am motivated by learning new skills and seeing our work help other people.","I listened to each team member and helped us agree on a shared goal.","We broke the problem into smaller tasks and tested our solution step by step.",""]
+const transcripts={session_id:session.id,is_dummy:true,answers:session.questions.map((q,i)=>({question_id:q.id,transcript:samples[i]}))}
+const root=createRoot(document.querySelector('#root'))
+const render=(phase)=>root.render(React.createElement(Analysis,{session,transcripts:phase==='stt'?null:transcripts,error:phase==='error'?'평가 서버에 연결하지 못했어요.': '',onRetry:()=>render('texts'),onBack:()=>render('stt')}))
+document.querySelector('#stt').onclick=()=>render('stt')
+document.querySelector('#texts').onclick=()=>render('texts')
+document.querySelector('#error').onclick=()=>render('error')
+render('stt')
+</script>
+</html>

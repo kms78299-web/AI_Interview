@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="ko">
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>질문 읽기·자동 녹화 검증</title>
+<div style="padding:8px;font:12px system-ui;background:#eeeaf4">테스트 전용 · 가상 음성과 테스트 영상 사용 · 서버 저장 없음 <button id="end">질문 읽기 완료시키기</button></div>
+<div id="root"><button id="start">테스트 면접 열기</button></div>
+<script type="module">
+import React from 'react'
+import { createRoot } from 'react-dom/client'
+import { Interview } from '/src/App.tsx'
+import { interviewCategories } from '/src/interviewApi.ts'
+import '/src/index.css'
+let utterance
+Object.defineProperty(window, 'speechSynthesis', { configurable:true, value:{
+  getVoices:()=>[], speak:u=>{utterance=u}, cancel:()=>{utterance=null},
+}})
+document.querySelector('#end').onclick=()=>{ const u=utterance; utterance=null; u?.onend?.() }
+document.querySelector('#start').onclick=async()=>{
+  const canvas=document.createElement('canvas'); canvas.width=640; canvas.height=360
+  const ctx=canvas.getContext('2d'); ctx.fillStyle='#55506d'; ctx.fillRect(0,0,640,360)
+  ctx.fillStyle='#fff'; ctx.font='24px sans-serif'; ctx.fillText('TEST CAMERA',230,180)
+  const audio=new AudioContext(); await audio.resume()
+  const destination=audio.createMediaStreamDestination(), oscillator=audio.createOscillator()
+  const gain=audio.createGain(); gain.gain.value=.01
+  oscillator.connect(gain); gain.connect(destination); oscillator.start()
+  const stream=new MediaStream([...canvas.captureStream(15).getVideoTracks(),...destination.stream.getAudioTracks()])
+  const root=createRoot(document.querySelector('#root'))
+  const cleanup=()=>{stream.getTracks().forEach(t=>t.stop()); oscillator.stop(); void audio.close()}
+  window.addEventListener('pagehide',cleanup,{once:true})
+  root.render(React.createElement(Interview,{
+    sessionId:'narration-ui-test', questions:interviewCategories.map((q,i)=>({id:q.id,category:q.category,question:i===0?'Tell me about yourself.':'Describe a time you worked with your team to solve a difficult problem and explain what you learned from the experience.',order:i+1})),
+    devices:{stream,ready:true,cameraReady:true,microphoneReady:true,status:'ready',connect(){},disconnect:cleanup},
+    onExit:()=>{cleanup();root.unmount()},onFinish:()=>{},
+  }))
+}
+</script>
+</html>

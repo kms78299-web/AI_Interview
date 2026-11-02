@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="ko">
+<meta charset="utf-8"><title>면접 제출 흐름 검증</title>
+<div id="root"><h1>면접 제출 흐름 검증</h1><p>카메라·마이크 대신 테스트 그림과 소리로 실제 면접 화면을 검증합니다.</p><button id="start">테스트 면접 시작</button></div>
+<script type="module">
+import React from 'react'
+import { createRoot } from 'react-dom/client'
+import { Interview, AnswerReview } from '/src/App.tsx'
+import { createInterview } from '/src/interviewApi.ts'
+import '/src/index.css'
+document.querySelector('#start').onclick = async () => {
+  document.querySelector('#start').disabled = true
+  const session = await createInterview(new AbortController().signal)
+  const canvas = document.createElement('canvas')
+  canvas.width = 640; canvas.height = 360
+  const context = new AudioContext()
+  await context.resume()
+  const destination = context.createMediaStreamDestination()
+  const oscillator = context.createOscillator()
+  oscillator.frequency.value = 440; oscillator.connect(destination); oscillator.start()
+  let frame
+  const draw = () => {
+    const ctx = canvas.getContext('2d')
+    ctx.fillStyle = '#55506d'; ctx.fillRect(0,0,640,360)
+    ctx.fillStyle = '#fff'; ctx.font = '28px sans-serif'
+    ctx.fillText('TEST VIDEO + AUDIO',130,160)
+    ctx.fillText(String(Math.round(performance.now())),250,220)
+    frame = requestAnimationFrame(draw)
+  }
+  draw()
+  const stream = new MediaStream([...canvas.captureStream(15).getVideoTracks(), ...destination.stream.getAudioTracks()])
+  const root = createRoot(document.querySelector('#root'))
+  const cleanup = () => { cancelAnimationFrame(frame); stream.getTracks().forEach(track => track.stop()); oscillator.stop(); void context.close() }
+  window.addEventListener('pagehide', cleanup, { once: true })
+  const finish = (answers) => {
+    cleanup()
+    root.render(React.createElement(AnswerReview, { session, answers }))
+  }
+  root.render(React.createElement(Interview, {
+    sessionId: session.id, questions: session.questions,
+    devices: { stream, ready:true, cameraReady:true, microphoneReady:true, status:'ready', message:'테스트 장치', connect(){}, disconnect:cleanup },
+    onExit:() => { cleanup(); root.unmount() }, onFinish:finish,
+  }))
+}
+</script>
+</html>

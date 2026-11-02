@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="ko">
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>면접 결과 UI 확인 · 테스트 데이터</title>
+<div id="root"></div>
+<script type="module">
+import React from 'react'
+import { createRoot } from 'react-dom/client'
+import { Results } from '/src/App.tsx'
+import { scoreMetrics, interviewCategories } from '/src/interviewApi.ts'
+import '/src/index.css'
+// UI 확인 전용: 모델 실행이나 실제 면접 데이터 저장 없이 표시합니다.
+const texts = ['Tell me about yourself.', 'What motivates you to do your best work?', 'Tell me about a time you worked through a team conflict.', 'Describe a difficult problem you solved.', 'How do you adapt when priorities suddenly change?']
+const session = { id: 'ui-preview', questions: texts.map((question, i) => ({ id: `q${i+1}`, question, category: interviewCategories[i].category, order: i+1 })) }
+const bands = ['상', '중', '중', '상', '하', '중']
+const scores = (empty=false) => Object.fromEntries(scoreMetrics.map(({key}, i) => [key, { band: empty ? null : bands[i], percentile: empty ? null : 44 + i * 6 }]))
+const transcript = "I am a computer science student interested in building useful services.\nIn our capstone project, I worked with my team to develop an English interview practice service. I enjoy solving problems together and learning from feedback."
+const result = { session_id: session.id, is_dummy: true, session: { scores: scores() }, videos: session.questions.map((q,i) => ({ question_id:q.id, scores:scores(i===4), transcript:i===4 ? '' : `Question ${i+1} — Sample answer.\n${transcript}` })) }
+createRoot(document.querySelector('#root')).render(React.createElement(Results, { session, result }))
+</script>
+</html>

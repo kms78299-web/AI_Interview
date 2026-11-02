@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="ko">
+<meta charset="utf-8">
+<title>녹화·저장 연결 검증</title>
+<style>body{font:16px sans-serif;max-width:760px;margin:50px auto;background:#f6f5f8;color:#302d3b}button{padding:12px 20px;margin:12px 12px 12px 0}video,canvas{width:320px;background:#17191e}pre{white-space:pre-wrap;background:white;padding:24px;border-radius:12px}</style>
+<h1>녹화·저장 연결 검증</h1>
+<p>테스트 그림과 테스트 음성을 사용합니다. 카메라·마이크는 사용하지 않습니다.</p>
+<canvas width="640" height="360"></canvas>
+<video controls playsinline aria-label="테스트 녹화 미리보기"></video>
+<div><button id="record">테스트 영상 2초 녹화</button><button id="upload" disabled>테스트 답변 서버 저장</button></div>
+<pre role="status">준비됨</pre>
+<script type="module">
+import { createAnswerRecorder } from '/src/answerRecorder.ts'
+import { createInterview, uploadAnswer } from '/src/interviewApi.ts'
+const canvas = document.querySelector('canvas')
+const status = document.querySelector('pre')
+const recordButton = document.querySelector('#record')
+const uploadButton = document.querySelector('#upload')
+const video = document.querySelector('video')
+let answer, session, url
+recordButton.onclick = async () => {
+  recordButton.disabled = true
+  uploadButton.disabled = true
+  let stream, context, oscillator, frame
+  const cleanup = () => { cancelAnimationFrame(frame); stream?.getTracks().forEach(track => track.stop()); oscillator?.stop(); void context?.close() }
+  try {
+    status.textContent = '테스트 질문 준비 중…'
+    session = await createInterview(new AbortController().signal)
+    context = new AudioContext()
+    await context.resume()
+    const destination = context.createMediaStreamDestination()
+    oscillator = context.createOscillator()
+    oscillator.frequency.value = 440
+    oscillator.connect(destination)
+    oscillator.start()
+    const draw = () => {
+      const ctx = canvas.getContext('2d')
+      ctx.fillStyle = '#55506d'; ctx.fillRect(0,0,640,360)
+      ctx.fillStyle = '#fff'; ctx.font = '28px sans-serif'
+      ctx.fillText('TEST VIDEO + AUDIO',130,160)
+      ctx.fillText(String(Math.round(performance.now())),250,220)
+      frame = requestAnimationFrame(draw)
+    }
+    draw()
+    stream = new MediaStream([...canvas.captureStream(15).getVideoTracks(), ...destination.stream.getAudioTracks()])
+    const recorder = createAnswerRecorder(stream, {
+      complete: recorded => {
+        answer = recorded
+        if(url) URL.revokeObjectURL(url)
+        video.src = url = URL.createObjectURL(answer.blob)
+        status.textContent = `녹화 완료\n시간: ${answer.duration.toFixed(2)}초\n파일: ${answer.blob.size} bytes\n세션: ${session.id}\n질문: ${session.questions[0].id}`
+        cleanup(); recordButton.disabled = false; uploadButton.disabled = false
+      },
+      error: message => { status.textContent = message; cleanup(); recordButton.disabled = false },
+    })
+    recorder.start()
+    status.textContent = '테스트 영상·음성 녹화 중…'
+    setTimeout(() => recorder.stop(), 2000)
+  } catch(error) { status.textContent = String(error); cleanup(); recordButton.disabled = false }
+}
+uploadButton.onclick = async () => {
+  uploadButton.disabled = true
+  recordButton.disabled = true
+  try {
+    await uploadAnswer(session.id, session.questions[0].id, answer.blob, answer.duration, new AbortController().signal)
+    status.textContent += '\n서버 저장 성공'
+  } catch(error) { status.textContent += '\n' + error; uploadButton.disabled = false }
+  finally { recordButton.disabled = false }
+}
+</script>
+</html>

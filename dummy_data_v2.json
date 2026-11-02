@@ -1,0 +1,199 @@
+{
+  "_note": "Labels are z-scores (mean=0, std~1). Range roughly -10 to +10. Positive = above average, Negative = below average.",
+  "_label_stats": {
+    "confidence_score": {"mean": 0, "std": 1.08, "min": -7.29, "max": 6.84},
+    "speaking_skills":  {"mean": 0, "std": 1.28, "min": -9.41, "max": 7.90},
+    "answer_score":     {"mean": 0, "std": 1.18, "min": -10.20, "max": 8.72},
+    "overall_performance": {"mean": 0, "std": 1.20, "min": -9.31, "max": 8.05}
+  },
+
+  "excellent": {
+    "label": "우수",
+    "labels": {
+      "interview_score":     1.87,
+      "answer_score":        2.10,
+      "speaking_skills":     1.95,
+      "confidence_score":    1.88,
+      "facial_expression":   1.72,
+      "overall_performance": 1.97
+    },
+    "text": {
+      "transcript": "I led a team of five during a critical project deadline. We faced resource constraints, so I redistributed tasks based on strengths. As a result, we delivered on time with high quality.",
+      "filler_words": ["um"],
+      "filler_count": 1,
+      "repeated_words": [],
+      "answer_length": 42,
+      "vocab_diversity": 0.92
+    },
+    "audio": {
+      "mfcc_mean": [2.1, -1.3, 0.8, -0.5, 1.2, 0.3, -0.7, 0.4, 0.9, -0.2, 0.6, -0.3, 0.1],
+      "mfcc_std":  [0.3,  0.2, 0.1,  0.2, 0.3, 0.1,  0.2, 0.1, 0.2,  0.1, 0.2,  0.1, 0.1],
+      "pitch_mean": 145.2,
+      "pitch_std": 18.3,
+      "rms_mean": 0.072,
+      "rms_std": 0.008,
+      "silence_ratio": 0.08,
+      "speech_rate": 132.0
+    },
+    "video": {
+      "AU06_mean": 0.72, "AU06_std": 0.10,
+      "AU12_mean": 0.68, "AU12_std": 0.12,
+      "AU45_mean": 0.18, "AU45_std": 0.05,
+      "AU04_mean": 0.08, "AU04_std": 0.03,
+      "gaze_x_mean": 0.04, "gaze_y_mean": 0.02, "gaze_std": 0.05,
+      "pose_rx_mean": 0.03, "pose_ry_mean": 0.02, "pose_rz_mean": 0.01, "pose_std": 0.04
+    }
+  },
+
+  "average": {
+    "label": "평균",
+    "labels": {
+      "interview_score":    -0.17,
+      "answer_score":       -0.13,
+      "speaking_skills":    -0.56,
+      "confidence_score":   -0.17,
+      "facial_expression":  -0.30,
+      "overall_performance": -0.19
+    },
+    "text": {
+      "transcript": "Um, I think I worked on a team project. We had some issues but, you know, we solved them. So, it was okay in the end.",
+      "filler_words": ["um", "you know", "so"],
+      "filler_count": 6,
+      "repeated_words": ["so"],
+      "answer_length": 28,
+      "vocab_diversity": 0.65
+    },
+    "audio": {
+      "mfcc_mean": [1.2, -0.8, 0.4, -0.3, 0.7, 0.2, -0.4, 0.3, 0.5, -0.1, 0.4, -0.2, 0.1],
+      "mfcc_std":  [0.5,  0.4, 0.3,  0.4, 0.5, 0.3,  0.4, 0.3, 0.4,  0.3, 0.4,  0.3, 0.2],
+      "pitch_mean": 138.5,
+      "pitch_std": 12.1,
+      "rms_mean": 0.055,
+      "rms_std": 0.015,
+      "silence_ratio": 0.22,
+      "speech_rate": 155.0
+    },
+    "video": {
+      "AU06_mean": 0.38, "AU06_std": 0.18,
+      "AU12_mean": 0.35, "AU12_std": 0.20,
+      "AU45_mean": 0.25, "AU45_std": 0.08,
+      "AU04_mean": 0.22, "AU04_std": 0.08,
+      "gaze_x_mean": 0.18, "gaze_y_mean": 0.12, "gaze_std": 0.15,
+      "pose_rx_mean": 0.08, "pose_ry_mean": 0.10, "pose_rz_mean": 0.05, "pose_std": 0.12
+    }
+  },
+
+  "poor": {
+    "label": "미흡",
+    "labels": {
+      "interview_score":     -2.03,
+      "answer_score":        -1.94,
+      "speaking_skills":     -2.12,
+      "confidence_score":    -1.55,
+      "facial_expression":   -1.61,
+      "overall_performance": -1.91
+    },
+    "text": {
+      "transcript": "Um... hmm... I, I think, um, I worked somewhere. So, so, it was, um, yeah, it was good I think. Um, yeah.",
+      "filler_words": ["um", "hmm", "yeah", "so"],
+      "filler_count": 18,
+      "repeated_words": ["so", "I think", "um"],
+      "answer_length": 22,
+      "vocab_diversity": 0.28
+    },
+    "audio": {
+      "mfcc_mean": [0.3, -0.2, 0.1, -0.1, 0.2, 0.1, -0.1, 0.1, 0.2, -0.1, 0.1, -0.1, 0.0],
+      "mfcc_std":  [0.8,  0.7, 0.6,  0.7, 0.8, 0.6,  0.7, 0.6, 0.7,  0.6, 0.7,  0.6, 0.5],
+      "pitch_mean": 125.3,
+      "pitch_std": 8.2,
+      "rms_mean": 0.032,
+      "rms_std": 0.025,
+      "silence_ratio": 0.42,
+      "speech_rate": 195.0
+    },
+    "video": {
+      "AU06_mean": 0.08, "AU06_std": 0.05,
+      "AU12_mean": 0.06, "AU12_std": 0.04,
+      "AU45_mean": 0.45, "AU45_std": 0.15,
+      "AU04_mean": 0.55, "AU04_std": 0.18,
+      "gaze_x_mean": 0.48, "gaze_y_mean": 0.35, "gaze_std": 0.32,
+      "pose_rx_mean": 0.22, "pose_ry_mean": 0.28, "pose_rz_mean": 0.18, "pose_std": 0.28
+    }
+  },
+
+  "good_content_bad_video": {
+    "label": "내용↑ 비언어↓",
+    "labels": {
+      "interview_score":     0.20,
+      "answer_score":        2.08,
+      "speaking_skills":     0.82,
+      "confidence_score":    -1.28,
+      "facial_expression":   -1.55,
+      "overall_performance": 0.18
+    },
+    "text": {
+      "transcript": "During my internship, I identified a critical bug in the payment system. I analyzed the root cause, proposed a fix, and coordinated with the backend team to deploy the solution within 24 hours.",
+      "filler_words": ["um"],
+      "filler_count": 2,
+      "repeated_words": [],
+      "answer_length": 38,
+      "vocab_diversity": 0.88
+    },
+    "audio": {
+      "mfcc_mean": [1.8, -1.0, 0.6, -0.4, 1.0, 0.2, -0.5, 0.3, 0.7, -0.2, 0.5, -0.2, 0.1],
+      "mfcc_std":  [0.4,  0.3, 0.2,  0.3, 0.4, 0.2,  0.3, 0.2, 0.3,  0.2, 0.3,  0.2, 0.1],
+      "pitch_mean": 140.1,
+      "pitch_std": 14.5,
+      "rms_mean": 0.062,
+      "rms_std": 0.012,
+      "silence_ratio": 0.15,
+      "speech_rate": 142.0
+    },
+    "video": {
+      "AU06_mean": 0.10, "AU06_std": 0.06,
+      "AU12_mean": 0.08, "AU12_std": 0.05,
+      "AU45_mean": 0.38, "AU45_std": 0.12,
+      "AU04_mean": 0.48, "AU04_std": 0.15,
+      "gaze_x_mean": 0.42, "gaze_y_mean": 0.30, "gaze_std": 0.28,
+      "pose_rx_mean": 0.18, "pose_ry_mean": 0.22, "pose_rz_mean": 0.12, "pose_std": 0.22
+    }
+  },
+
+  "good_video_bad_content": {
+    "label": "비언어↑ 내용↓",
+    "labels": {
+      "interview_score":      0.28,
+      "answer_score":        -1.72,
+      "speaking_skills":     -0.85,
+      "confidence_score":     1.95,
+      "facial_expression":    1.88,
+      "overall_performance":  0.15
+    },
+    "text": {
+      "transcript": "So, I think I did good things. So, yeah, I worked hard and it was good. So I think that's it.",
+      "filler_words": ["so", "yeah", "I think"],
+      "filler_count": 8,
+      "repeated_words": ["so", "good", "I think"],
+      "answer_length": 25,
+      "vocab_diversity": 0.30
+    },
+    "audio": {
+      "mfcc_mean": [1.5, -0.9, 0.5, -0.3, 0.8, 0.2, -0.4, 0.3, 0.6, -0.1, 0.4, -0.2, 0.1],
+      "mfcc_std":  [0.3,  0.2, 0.2,  0.2, 0.3, 0.1,  0.2, 0.1, 0.2,  0.1, 0.2,  0.1, 0.1],
+      "pitch_mean": 148.8,
+      "pitch_std": 20.5,
+      "rms_mean": 0.078,
+      "rms_std": 0.009,
+      "silence_ratio": 0.10,
+      "speech_rate": 128.0
+    },
+    "video": {
+      "AU06_mean": 0.78, "AU06_std": 0.08,
+      "AU12_mean": 0.75, "AU12_std": 0.09,
+      "AU45_mean": 0.15, "AU45_std": 0.04,
+      "AU04_mean": 0.05, "AU04_std": 0.02,
+      "gaze_x_mean": 0.03, "gaze_y_mean": 0.02, "gaze_std": 0.04,
+      "pose_rx_mean": 0.02, "pose_ry_mean": 0.02, "pose_rz_mean": 0.01, "pose_std": 0.03
+    }
+  }
+}
