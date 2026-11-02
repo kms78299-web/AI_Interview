@@ -28,12 +28,9 @@ AUDIO_KEYS = ["pitch_mean", "pitch_std", "rms_mean", "rms_std", "silence_ratio",
 
 
 def _duration_sec(video_path):
-    import cv2
-    cap = cv2.VideoCapture(video_path)
-    fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
-    n = cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0
-    cap.release()
-    return float(n / fps) if n else 0.0
+    """영상 길이(초). 브라우저 WebM은 OpenCV의 FPS/프레임 수 메타데이터가 틀려서(프레임 수 음수, FPS 1000) 실제 타임스탬프로 센다."""
+    from video_stats import video_duration_sec
+    return video_duration_sec(video_path)
 
 
 def extract_stats(video_path, transcript):
@@ -119,6 +116,12 @@ FEEDBACK_JSON_EXAMPLE = json.dumps({
 }, ensure_ascii=False, indent=2)
 
 
+def build_text_only_stats(transcript):
+    """영상/음성 통계 추출이 실패했을 때 쓰는 대체 입력: 대본과 대본 통계만 있고 audio/video는 비어 있다."""
+    from text_features import extract_text_stats_for_prompt
+    return {"audio": {}, "text": extract_text_stats_for_prompt(transcript), "video": {}}
+
+
 def build_feedback_prompt(stats, model_result=None, question=None, reference=None):
     """통계(+선택: 모델 결과, 질문, 기준표) -> LLM에 줄 프롬프트 문자열.
 
@@ -148,7 +151,10 @@ def build_feedback_prompt(stats, model_result=None, question=None, reference=Non
         "당신은 면접 연습 피드백을 쓰는 코치입니다. 아래는 면접 답변 영상에서 자동으로 측정한 값입니다.",
         *(["질문: " + question] if question else []),
         "", "[답변 대본]", t["transcript"] or "(대본 없음)", "",
-        "[측정값]", *lines, *extras, "",
+        "[측정값]",
+        *(["(영상·음성 측정값 추출에 실패해 제공되지 않음. 대본과 대본 통계만으로 평가하고, 음성·시선·표정은 평가하지 않는다고 밝힌다)"]
+          if not stats["audio"] and not stats["video"] else []),
+        *lines, *extras, "",
         *(["[참고: 예측 모델 결과 — 참가자 집단 대비 상대 위치이며 절대 점수가 아님, 정확도는 중간 수준. "
            "이 모델은 학습 데이터의 경향상 답변이 짧을수록 점수를 높게 주는 편이라, 내용의 적절성은 판단하지 못한다]", *result_lines, ""]
           if result_lines else ["[참고: 이 답변은 너무 짧거나 분석 조건에 맞지 않아 예측 모델 점수는 제공되지 않음]", ""]),

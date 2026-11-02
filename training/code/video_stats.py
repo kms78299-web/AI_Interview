@@ -70,41 +70,82 @@ def _frame_features(lm, w, h):
     }
 
 
+FALLBACK_FPS = 30.0  # 타임스탬프를 못 읽을 때(0이거나 늘어나지 않을 때)만 쓰는 가정값
+
+
+def _frame_times(cap):
+    """cap.grab()으로 프레임을 하나씩 넘기며 (프레임 번호, 실제 시간(초))을 낸다.
+
+    브라우저가 녹화한 WebM은 헤더에 길이/프레임 수가 없어서 OpenCV가 프레임 수를 음수, FPS를 1000으로 보고한다.
+    그 값들(CAP_PROP_FPS, CAP_PROP_FRAME_COUNT)은 쓰지 않고, 프레임을 읽을 때마다 CAP_PROP_POS_MSEC(실제 타임스탬프)만 쓴다.
+    타임스탬프가 0이거나 늘어나지 않으면 직전 시간 + 1/FALLBACK_FPS로 대신한다."""
+    import cv2
+    prev_t, idx = None, 0
+    while cap.grab():
+        t = cap.get(cv2.CAP_PROP_POS_MSEC) / 1000.0
+        if prev_t is None:
+            t = max(t, 0.0)
+        elif not t > prev_t:
+            t = prev_t + 1.0 / FALLBACK_FPS
+        yield idx, t
+        prev_t, idx = t, idx + 1
+
+
+def video_duration_sec(video_path):
+    """영상 길이(초): 마지막 프레임의 실제 타임스탬프 기준. 메타데이터(FPS, 프레임 수)는 쓰지 않는다. 읽을 수 없으면 0.0."""
+    import cv2
+    cap = cv2.VideoCapture(video_path)
+    if not cap.isOpened():
+        return 0.0
+    try:
+        last = 0.0
+        for _, t in _frame_times(cap):
+            last = t
+        return float(last)
+    finally:
+        cap.release()
+
+
+def iter_sampled_frames(video_path, sample_fps=5.0, max_seconds=180.0):
+    """영상을 실제 시간 기준으로 sample_fps 간격마다 한 프레임씩 낸다: (시간(초), BGR 프레임). max_seconds를 넘으면 멈춘다."""
+    import cv2
+    cap = cv2.VideoCapture(video_path)
+    if not cap.isOpened():
+        raise RuntimeError(f"영상을 열 수 없음: {video_path}")
+    interval, next_t = 1.0 / sample_fps, 0.0
+    try:
+        for _, t in _frame_times(cap):
+            if t > max_seconds:
+                break
+            if t >= next_t:
+                ok, frame = cap.retrieve()
+                if ok:
+                    yield t, frame
+                next_t = t + interval
+    finally:
+        cap.release()
+
+
 def extract_video_stats(video_path, sample_fps=5.0, max_seconds=180.0):
     import cv2
     import mediapipe as mp
 
-    cap = cv2.VideoCapture(video_path)
-    if not cap.isOpened():
-        raise RuntimeError(f"영상을 열 수 없음: {video_path}")
-    fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
-    n_total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
-    step = max(1, int(round(fps / sample_fps)))
-    real_sample_fps = fps / step
-    limit = int(max_seconds * fps)
-
-    feats, n_seen = [], 0
+    feats, times, n_seen = [], [], 0
     mesh = mp.solutions.face_mesh.FaceMesh(static_image_mode=False, max_num_faces=1, refine_landmarks=True,
                                            min_detection_confidence=0.5, min_tracking_confidence=0.5)
     try:
-        idx = 0
-        while idx < limit and (n_total == 0 or idx < n_total):
-            ok, frame = cap.read()
-            if not ok:
-                break
-            if idx % step == 0:
-                n_seen += 1
-                h, w = frame.shape[:2]
-                res = mesh.process(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
-                if res.multi_face_landmarks:
-                    lm = np.array([[l.x, l.y, l.z] for l in res.multi_face_landmarks[0].landmark])
-                    f = _frame_features(lm, w, h)
-                    if f is not None:
-                        feats.append(f)
-            idx += 1
+        for t, frame in iter_sampled_frames(video_path, sample_fps, max_seconds):
+            n_seen += 1
+            h, w = frame.shape[:2]
+            res = mesh.process(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
+            if res.multi_face_landmarks:
+                lm = np.array([[l.x, l.y, l.z] for l in res.multi_face_landmarks[0].landmark])
+                f = _frame_features(lm, w, h)
+                if f is not None:
+                    feats.append(f)
+                    times.append(t)
     finally:
         mesh.close()
-        cap.release()
 
     if len(feats) < 3:
         raise RuntimeError(f"얼굴이 거의 검출되지 않음 (샘플 {n_seen}프레임 중 {len(feats)}개): {video_path}")
@@ -118,7 +159,8 @@ def extract_video_stats(video_path, sample_fps=5.0, max_seconds=180.0):
     eye_open = col("eye_open")
     closed = eye_open < 0.6 * np.median(eye_open)  # 그 사람의 평소 눈 뜬 정도보다 크게 줄면 깜빡임으로 간주
     blinks = int(np.sum(closed[1:] & ~closed[:-1])) + int(closed[0])
-    duration_min = len(feats) / real_sample_fps / 60.0
+    span = times[-1] - times[0]  # 얼굴이 잡힌 첫 샘플부터 마지막 샘플까지의 실제 시간(초)
+    duration_min = (span if span > 0 else len(feats) / sample_fps) / 60.0
 
     return {
         "face_detected_ratio": float(len(feats) / max(n_seen, 1)),

@@ -411,7 +411,8 @@ def analyze_session(video_paths, transcripts=None, questions=None, with_stats=Tr
     guard=True(기본): 너무 짧은 답변(min_words 단어 미만 또는 min_seconds초 미만)은 점수를 내지 않고
       scores=None, skipped=True, warning에 이유를 담는다. 이런 영상은 세션 점수 계산에서도 제외한다.
       그래도 with_stats면 통계와 llm_prompt(점수 없는 버전)는 만들어서 LLM이 내용을 평가할 수 있게 한다.
-    통계 추출이 한 영상에서 실패해도 전체 분석은 유지하고, 그 영상은 stats=None, stats_error에 이유를 담는다."""
+    통계 추출이 한 영상에서 실패해도 전체 분석은 유지하고, 그 영상은 stats=None, stats_error에 이유를 담고
+    llm_prompt는 대본(+점수)만으로 만든 대체 프롬프트가 들어간다(Gemini 호출이 끊기지 않게)."""
     video_paths = list(video_paths)
     if questions is not None and len(questions) != len(video_paths):
         raise ValueError("questions 길이가 video_paths와 다름")
@@ -448,7 +449,7 @@ def analyze_session(video_paths, transcripts=None, questions=None, with_stats=Tr
     if not with_stats:
         return result
 
-    from extract_stats import build_feedback_prompt, extract_stats
+    from extract_stats import build_feedback_prompt, build_text_only_stats, extract_stats
     models = kwargs.get("models") or _MODELS
     checkpoint_dir = (models or {}).get("checkpoint_dir") or kwargs.get("checkpoint_dir") or _default_checkpoint_dir()
     reference = _load_json(checkpoint_dir, "stats_reference.json")
@@ -459,9 +460,12 @@ def analyze_session(video_paths, transcripts=None, questions=None, with_stats=Tr
             video["llm_prompt"] = build_feedback_prompt(
                 stats, {"scores": video["scores"]} if video["scores"] else None,
                 None if questions is None else questions[i], reference)
-        except Exception as e:  # 얼굴 미검출 등: 이 영상의 통계만 포기
-            video["stats"], video["llm_prompt"] = None, None
+        except Exception as e:  # 얼굴 미검출, 영상 읽기 실패 등: 이 영상의 통계만 포기하고, 대본+점수만으로 대체 프롬프트를 만든다
+            video["stats"] = None
             video["stats_error"] = f"{type(e).__name__}: {e}"
+            video["llm_prompt"] = build_feedback_prompt(
+                build_text_only_stats(video["transcript"]), {"scores": video["scores"]} if video["scores"] else None,
+                None if questions is None else questions[i], reference)
     return result
 
 
