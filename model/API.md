@@ -24,6 +24,7 @@ result = client.predict(files, json.dumps(texts), "", True, api_name="/analyze")
 - `explanation`: 점수 해석 문구(절대 점수가 아니라 집단 대비 상대 위치라는 설명 포함).
 - 점수 항목: `percentile`(0~100 기대 백분위, 50이 평균), `percentile_low`~`percentile_high`(80% 범위), `band`(상/중/하), `raw`(모델 원 출력).
 - 한 영상의 통계 추출이 실패해도(예: 얼굴이 안 잡힘) 전체는 정상 반환하고, 그 영상만 `stats: null`, `llm_prompt: null`, `stats_error`에 이유가 들어간다.
+- **너무 짧은 답변은 점수를 내지 않는다.** 대본이 13단어 미만이거나 영상이 7초 미만이면 해당 영상은 `scores: null`, `skipped: true`, `warning`(이유)이 들어간다. 이 모델은 학습 데이터의 경향상 아주 짧은 답변에 점수를 높게 주기 때문이다(13단어 미만 답변의 정답 평균 백분위가 85). 이런 영상은 `session` 점수 계산에서도 빠지고(`session.n_skipped`에 개수), 전부 짧으면 `session.scores`도 `null`이다. 이 경우에도 `llm_prompt`는 점수 없는 버전으로 들어 있어 LLM이 내용을 평가할 수 있다. UI는 `scores == null`이면 점수 대신 `warning`을 보여 주면 된다.
 - `videos[i].video`는 서버 임시 경로라 쓰지 말고 **순서(index)** 로 영상을 구분한다.
 
 ```json
@@ -188,4 +189,4 @@ result = client.predict(files, json.dumps(texts), "", True, api_name="/analyze")
 ```
 
 ## LLM 호출은 백엔드가 한다
-`videos[i].llm_prompt`를 LLM에 그대로 보내면 된다. 프롬프트에는 "측정값을 점수의 원인으로 단정하지 말 것" 같은 규칙이 이미 들어 있다. 점수는 참가자 집단 대비 상대 위치이며 정확도가 중간 수준이라, 합격/불합격 판단 같은 용도로 쓰지 않는다.
+`videos[i].llm_prompt`를 LLM에 그대로 보내면 된다. 프롬프트에는 "측정값을 점수의 원인으로 단정하지 말 것" 같은 규칙과, 답변 내용이 질문에 맞는지를 먼저 평가하게 하는 규칙(질문을 이해 못 했다고 답한 경우 등)이 이미 들어 있다. 질문 텍스트를 `questions_json`으로 주면 내용 평가가 더 정확해진다. 점수는 참가자 집단 대비 상대 위치이며 정확도가 중간 수준이라, 합격/불합격 판단 같은 용도로 쓰지 않는다.
