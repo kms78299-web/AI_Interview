@@ -3,8 +3,10 @@ Colab에서 Gradio 서버를 띄워 로컬 백엔드(FastAPI)가 HTTP로 호출�
 
 API 2개 (api_name):
   /stt      영상 N개(질문 순서) -> 대본 텍스트 N개 (같은 순서의 JSON 리스트). STT만 한다.
-  /analyze  영상 N개 + 위 텍스트 -> {"session", "videos", "explanation"} (run_session_inference와 같은 형식).
+  /analyze  영상 N개 + 위 텍스트 -> {"session", "videos", "explanation"} (run_session_inference 형식)
+            + videos[i]에 "stats"(해석용 통계)와 "llm_prompt"(LLM에 그대로 보낼 프롬프트)가 추가됨.
             텍스트를 주면 STT를 다시 돌리지 않고 그대로 점수 분석에 쓴다. 텍스트를 비우면 STT부터 한다.
+            questions_json(질문 텍스트 리스트, 선택)을 주면 프롬프트에 질문이 들어간다. with_stats=False면 통계 없이 점수만.
 
 Colab에서:
     !pip install -r requirements_colab.txt
@@ -16,7 +18,7 @@ Colab에서:
     client = Client("https://xxxx.gradio.live")
     files = [handle_file(p) for p in video_paths]                      # 질문 순서대로
     texts = client.predict(files, api_name="/stt")                     # ["1번 답변", ..., "5번 답변"]
-    result = client.predict(files, json.dumps(texts), api_name="/analyze")   # session / videos / explanation
+    result = client.predict(files, json.dumps(texts), "", True, api_name="/analyze")   # transcripts_json, questions_json(""=없음), with_stats
 영상 순서가 곧 질문 순서이고, 반환되는 텍스트와 videos도 같은 순서다. 질문 ID 연결은 백엔드가 한다.
 """
 
@@ -39,19 +41,25 @@ def stt_api(files, language="en"):
     return inference.transcribe_videos(_paths(files), language=language)
 
 
-def analyze_api(files, transcripts_json=""):
+def _json_list(text, name, n):
+    if not text or not text.strip():
+        return None
+    try:
+        value = json.loads(text)
+    except json.JSONDecodeError as e:
+        raise gr.Error(f"{name}이 JSON이 아님: {e}")
+    if not isinstance(value, list) or not all(isinstance(t, str) for t in value):
+        raise gr.Error(f"{name}은 문자열 리스트여야 함")
+    if len(value) != n:
+        raise gr.Error(f"{name} {len(value)}개와 영상 {n}개의 개수가 다름")
+    return value
+
+
+def analyze_api(files, transcripts_json="", questions_json="", with_stats=True):
     paths = _paths(files)
-    transcripts = None
-    if transcripts_json and transcripts_json.strip():
-        try:
-            transcripts = json.loads(transcripts_json)
-        except json.JSONDecodeError as e:
-            raise gr.Error(f"transcripts_json이 JSON이 아님: {e}")
-        if not isinstance(transcripts, list) or not all(isinstance(t, str) for t in transcripts):
-            raise gr.Error("transcripts_json은 문자열 리스트여야 함")
-        if len(transcripts) != len(paths):
-            raise gr.Error(f"텍스트 {len(transcripts)}개와 영상 {len(paths)}개의 개수가 다름")
-    return inference.run_session_inference(paths, transcripts=transcripts)
+    return inference.analyze_session(paths, transcripts=_json_list(transcripts_json, "transcripts_json", len(paths)),
+                                     questions=_json_list(questions_json, "questions_json", len(paths)),
+                                     with_stats=with_stats)
 
 
 def build_app():
@@ -60,10 +68,12 @@ def build_app():
         files = gr.File(label="영상 (질문 순서)", file_count="multiple", type="filepath")
         language = gr.Textbox(label="STT 언어", value="en")
         transcripts = gr.Textbox(label="transcripts_json (비우면 STT부터)", lines=3)
+        questions = gr.Textbox(label="questions_json (선택, 프롬프트에 질문 포함)", lines=2)
+        with_stats = gr.Checkbox(label="통계/LLM 프롬프트 포함", value=True)
         stt_out = gr.JSON(label="STT 결과")
         result_out = gr.JSON(label="분석 결과")
         gr.Button("STT만").click(stt_api, [files, language], stt_out, api_name="stt")
-        gr.Button("점수 분석").click(analyze_api, [files, transcripts], result_out, api_name="analyze")
+        gr.Button("점수 분석").click(analyze_api, [files, transcripts, questions, with_stats], result_out, api_name="analyze")
     return demo.queue(default_concurrency_limit=1)  # 모델이 하나라 요청을 한 번에 하나씩 처리
 
 

@@ -380,6 +380,35 @@ def run_session_inference(video_paths, smoothing=None, transcripts=None, **kwarg
             "videos": videos, "explanation": explanation}
 
 
+def analyze_session(video_paths, transcripts=None, questions=None, with_stats=True, **kwargs):
+    """영상 N개(질문 순서) -> run_session_inference 결과 + 영상별 통계(stats) + LLM 프롬프트(llm_prompt).
+
+    transcripts: STT 텍스트(transcribe_videos 결과)를 주면 그대로 재사용한다. 없으면 STT부터 한다.
+    questions: 질문 텍스트 리스트(선택, video_paths와 같은 순서). 주면 프롬프트에 질문이 들어간다.
+    with_stats=False면 통계/프롬프트 없이 기존 점수 분석만 한다.
+    통계 추출이 한 영상에서 실패해도 전체 분석은 유지하고, 그 영상은 stats=None, stats_error에 이유를 담는다."""
+    video_paths = list(video_paths)
+    if questions is not None and len(questions) != len(video_paths):
+        raise ValueError("questions 길이가 video_paths와 다름")
+    result = run_session_inference(video_paths, transcripts=transcripts, **kwargs)
+    if not with_stats:
+        return result
+
+    from extract_stats import build_feedback_prompt, extract_stats
+    models = kwargs.get("models") or _MODELS
+    reference = _load_json(models["checkpoint_dir"], "stats_reference.json")
+    for i, video in enumerate(result["videos"]):
+        try:
+            stats = extract_stats(video_paths[i], video["transcript"])
+            video["stats"] = stats
+            video["llm_prompt"] = build_feedback_prompt(
+                stats, {"scores": video["scores"]}, None if questions is None else questions[i], reference)
+        except Exception as e:  # 얼굴 미검출 등: 이 영상의 통계만 포기
+            video["stats"], video["llm_prompt"] = None, None
+            video["stats_error"] = f"{type(e).__name__}: {e}"
+    return result
+
+
 def build_result(raw_scores, checkpoint_dir):
     """모델 raw 출력 -> 보정 백분위(0~100) + 80% 구간 + 상/중/하 + 설명문.
 

@@ -18,3 +18,5 @@ av==17.1.0
 openai-whisper
 # Colab에서 로컬 백엔드가 호출할 API 서버(code/serve_gradio.py)용. 5.50.0으로 로컬에서 STT/분석 호출 동작 확인함.
 gradio>=5.0,<6.0
+# 통계 추출(code/video_stats.py)용. 학습 환경과 같은 0.10.21이지만 Colab 설치는 아직 확인 못함.
+mediapipe==0.10.21
