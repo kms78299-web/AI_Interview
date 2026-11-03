@@ -1,17 +1,11 @@
 """
-RECRUITVIEW 원논문(CRMF, arXiv:2512.00450)을 geometry/manifold/router 없이
-단순화한 경량 fusion MLP — "mini CRMF".
+RecruitView 논문(CRMF, arXiv:2512.00450)의 fusion을 단순화한 MLP(mini CRMF) 학습.
 
-입력: features/embed/{encoder}/{id}.npy (Track 1 임베딩) + features/meta.csv
-(build_meta.py로 생성, id/user_no/라벨 12개). 선택한 --encoders 전부가 있는
-id만 사용한다.
+입력: features/embed/{encoder}/{id}.npy + features/meta.csv.
 
-사용 예:
     python train_mini_crmf.py --encoders wav2vec2-base bert-base-uncased --fusion prefusion
     python train_mini_crmf.py --encoders wav2vec2-base bert-base-uncased --fusion concat
     python train_mini_crmf.py --encoders wav2vec2-base bert-base-uncased videomae --smoke_test
-
-금지(요청받은 범위 밖): manifold/router 구현, encoder fine-tuning, 결과 숫자 조정.
 """
 
 import argparse
@@ -42,9 +36,7 @@ from config import (
 MODALITY_ORDER = ["text", "audio", "video"]
 
 
-# ─────────────────────────────────────────────
 # 0. 공통 유틸
-# ─────────────────────────────────────────────
 def set_seed(seed):
     random.seed(seed)
     np.random.seed(seed)
@@ -76,9 +68,7 @@ def assert_finite(arr, what):
         raise ValueError(f"{what}에 NaN/inf 있음 (첫 번째 위치: {bad[0].tolist()})")
 
 
-# ─────────────────────────────────────────────
 # 1. user_no 기준 split (70/15/15, 전 실험 공유)
-# ─────────────────────────────────────────────
 def build_or_load_split(meta_df, splits_dir, seed=SPLIT_SEED):
     split_path = os.path.join(splits_dir, f"split_seed{seed}.json")
     if os.path.exists(split_path):
@@ -124,9 +114,7 @@ def check_no_user_overlap(meta_df, split):
     assert not (val_u & test_u), f"val/test에 겹치는 user_no: {val_u & test_u}"
 
 
-# ─────────────────────────────────────────────
 # 2. 데이터 로딩
-# ─────────────────────────────────────────────
 def resolve_modality_dirs(encoders, features_dir):
     modality_dirs = {}
     for enc in encoders:
@@ -175,9 +163,7 @@ def load_labels(meta_df, ids):
     return y
 
 
-# ─────────────────────────────────────────────
 # 3. 모델
-# ─────────────────────────────────────────────
 class ModalityProjector(nn.Module):
     def __init__(self, in_dim, d_model, dropout):
         super().__init__()
@@ -281,9 +267,7 @@ class MiniCRMF(nn.Module):
         return self.head(z)
 
 
-# ─────────────────────────────────────────────
 # 4. Dataset
-# ─────────────────────────────────────────────
 class EmbedDataset(torch.utils.data.Dataset):
     def __init__(self, embeddings, targets):
         self.embeddings = {m: torch.from_numpy(v) for m, v in embeddings.items()}
@@ -297,9 +281,7 @@ class EmbedDataset(torch.utils.data.Dataset):
         return x, self.targets[idx]
 
 
-# ─────────────────────────────────────────────
 # 5. 평가
-# ─────────────────────────────────────────────
 def evaluate(model, loader, device, target_names, original_labels):
     """original_labels: loader와 같은 순서로 정렬된 (N, T) 원본(비가공) 라벨.
     Spearman은 단조 변환(winsorization)에 불변이라 모델 출력(윈저라이즈 공간)을
@@ -325,9 +307,7 @@ def evaluate(model, loader, device, target_names, original_labels):
     return metrics, preds
 
 
-# ─────────────────────────────────────────────
 # 6. 학습 (seed 1회)
-# ─────────────────────────────────────────────
 def train_one_seed(seed, args, modality_dims, train_ds, val_loader, val_labels_raw, device):
     set_seed(seed)
     model = MiniCRMF(
@@ -384,9 +364,7 @@ def train_one_seed(seed, args, modality_dims, train_ds, val_loader, val_labels_r
     return model, best_val_spearman
 
 
-# ─────────────────────────────────────────────
 # 7. main
-# ─────────────────────────────────────────────
 def parse_args():
     p = argparse.ArgumentParser(description="mini CRMF — 경량 fusion MLP 학습")
     p.add_argument("--encoders", nargs="+", required=True,

@@ -1,14 +1,12 @@
 """
-Track 2 (stats): LLM 피드백용 해석 가능한 통계 추출 + 프롬프트 만들기.
+LLM 피드백용 통계 추출과 프롬프트 생성.
 
-영상 1개 -> {audio, text, video 통계}를 하나의 dict로 모은다. 서비스에서는 extract_stats(video_path, transcript)를 부르면 되고,
-데이터셋 전체(2011개)는 아래 CLI로 features/stats/{id}.json에 저장한다. 저장한 값의 분포를 기준표(stats_reference.json)로 만들어 두면
-프롬프트에서 "이 값이 RecruitView 참가자 중 상위 몇 %인지"까지 LLM에게 줄 수 있다 (임의 기준값 대신 데이터 분포로 해석).
+extract_stats(video_path, transcript)가 영상 하나의 audio/text/video 통계를 dict로 돌려주고, build_feedback_prompt가 LLM 프롬프트를 만든다.
+데이터셋 전체는 CLI로 features/stats/{id}.json에 저장하고, --reference로 값의 분포(stats_reference.json)를 만든다.
 
-사용 (영상 파일은 ariel-v7에만 있으므로 sbatch -w ariel-v7 로 실행, run_extract_stats.sh 참고):
-    python extract_stats.py --limit 5            # 소량 확인
-    python extract_stats.py                       # 전체 추출 -> features/stats/{id}.json
-    python extract_stats.py --reference           # 저장된 값으로 stats_reference.json 만들기 (CPU, 영상 불필요)
+    python extract_stats.py --limit 5     # 소량 확인
+    python extract_stats.py               # 전체 (영상이 ariel-v7에 있으므로 run_extract_stats.sh)
+    python extract_stats.py --reference
 """
 
 import argparse
@@ -49,7 +47,7 @@ def extract_stats(video_path, transcript):
     return {"audio": audio, "text": text, "video": extract_video_stats(video_path)}
 
 
-# ───────────── 기준표 (데이터셋 분포) ─────────────
+# 기준표 (데이터셋 분포)
 
 NUMERIC_KEYS = {
     "audio": AUDIO_KEYS + ["duration_sec", "speaking_rate_wpm"],
@@ -84,7 +82,7 @@ def to_percentile(reference, group, key, value):
     return int(round(100 * np.searchsorted(vals, value, side="right") / len(vals)))
 
 
-# ───────────── LLM 프롬프트 ─────────────
+# LLM 프롬프트
 
 STAT_LABELS = {
     "audio": {"speaking_rate_wpm": "말 속도(분당 단어 수)", "silence_ratio": "침묵 비율",
@@ -177,7 +175,7 @@ def build_feedback_prompt(stats, model_result=None, question=None, reference=Non
     ])
 
 
-# ───────────── 배치 CLI ─────────────
+# 배치 CLI
 
 def run_batch(args):
     out_dir = os.path.join(args.features_dir, "stats")

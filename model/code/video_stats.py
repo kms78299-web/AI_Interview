@@ -1,26 +1,9 @@
 """
-Video 통계 추출 (Track 2: LLM 피드백용, 사람이 읽을 수 있는 값).
+Video 통계 추출 (LLM 피드백용). MediaPipe FaceMesh로 영상을 초당 5프레임 읽어 시선, 고개 방향, 눈 깜빡임, 입 모양을 요약한다.
 
-MediaPipe FaceMesh(눈동자 포함, 478점)로 영상을 초당 몇 프레임씩 훑어서 얼굴 움직임/시선/고개 방향/눈 깜빡임/입 모양을 요약한다.
-MLP 입력(예측용 임베딩)과는 별개이고, 예측 정확도를 올리려는 것이 아니라 LLM이 "관찰된 패턴"을 설명하게 하려는 값이다
-(MediaPipe 얼굴 통계는 점수 예측에는 도움이 안 됐음: test Spearman -0.005).
-
-모든 값은 얼굴 크기에 맞춰 정규화한 상대값이라 카메라 거리에 덜 민감하다. 각도(도)가 아니라 근사 지표이므로
-'절대 각도'가 아니라 '얼마나 많이/자주'를 해석하는 용도로만 쓴다.
-
-반환 (모두 float):
-  face_detected_ratio     얼굴이 잡힌 프레임 비율 (낮으면 아래 값들을 믿기 어려움)
-  gaze_off_center_mean    시선이 정면에서 벗어난 정도 평균 (0=정면, 클수록 옆/위/아래를 봄)
-  gaze_away_ratio         시선이 크게 벗어난 프레임 비율
-  gaze_x_std, gaze_y_std  시선이 좌우/상하로 흔들린 정도
-  head_yaw_mean_abs       고개가 좌우로 돌아간 정도 평균 (0=정면)
-  head_pitch_mean         고개 상하 기울기 평균 (+ 아래, - 위; 개인 기준선 대비 해석)
-  head_roll_std           고개가 갸웃거린 정도 변동
-  head_motion             프레임 간 머리 위치 변화 평균 (클수록 많이 움직임)
-  blink_rate_per_min      분당 눈 깜빡임 수 (근사)
-  mouth_open_std          입을 벌렸다 닫는 변동 (말할 때 입 움직임)
-  mouth_width_std         입 가로폭 변동 (표정 변화의 근사)
-  n_frames_used           분석에 쓴 프레임 수
+값은 얼굴 크기로 정규화한 근사 지표라서 각도가 아니라 얼마나 많이/자주를 읽는 용도다. MLP 입력이 아니다.
+반환 키: face_detected_ratio, gaze_off_center_mean, gaze_away_ratio, gaze_x_std, gaze_y_std, head_yaw_mean_abs,
+head_pitch_mean, head_roll_std, head_motion, blink_rate_per_min, mouth_open_std, mouth_width_std, n_frames_used
 """
 
 import math
@@ -74,11 +57,7 @@ FALLBACK_FPS = 30.0  # 타임스탬프를 못 읽을 때(0이거나 늘어나지
 
 
 def _frame_times(cap):
-    """cap.grab()으로 프레임을 하나씩 넘기며 (프레임 번호, 실제 시간(초))을 낸다.
-
-    브라우저가 녹화한 WebM은 헤더에 길이/프레임 수가 없어서 OpenCV가 프레임 수를 음수, FPS를 1000으로 보고한다.
-    그 값들(CAP_PROP_FPS, CAP_PROP_FRAME_COUNT)은 쓰지 않고, 프레임을 읽을 때마다 CAP_PROP_POS_MSEC(실제 타임스탬프)만 쓴다.
-    타임스탬프가 0이거나 늘어나지 않으면 직전 시간 + 1/FALLBACK_FPS로 대신한다."""
+    """cap에서 프레임을 하나씩 넘기며 (번호, 실제 시간(초))을 낸다. 브라우저 WebM은 FPS와 프레임 수 메타데이터가 틀려서 CAP_PROP_POS_MSEC만 쓴다."""
     import cv2
     prev_t, idx = None, 0
     while cap.grab():

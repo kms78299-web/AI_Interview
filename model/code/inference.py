@@ -1,38 +1,15 @@
 """
-새 영상(RecruitView 데이터셋 바깥의 영상) 하나를 넣으면 interview 성과 점수
-6개를 반환하는 end-to-end 추론 코드.
+새 영상을 넣으면 interview 점수 6개를 반환하는 추론 코드.
 
-학습/검증에 쓴 extract_features.py 등은 metadata.jsonl(이미 transcript가 있는
-RecruitView 전용 메타데이터)을 전제로 하는 배치 처리용 코드라서, 임의의 영상
-파일 하나를 바로 넣을 수 있는 용도로는 못 씀 — 그래서 이 파일을 따로 둠.
+학습 데이터에는 transcript가 이미 있었지만 새 영상에는 없어서, Whisper로 STT를 먼저 돌려 텍스트를 만든다.
 
-RecruitView 샘플과 다른 점: transcript가 없으므로 Whisper로 STT를 먼저 돌려서
-텍스트를 만든다 (학습 때는 이미 주어진 transcript를 그대로 썼음, STT 과정 자체가
-없었음 — 이 차이를 꼭 알고 있을 것).
+    from inference import run_inference, run_session_inference, analyze_session
+    result = run_inference("my_interview.mp4")                    # 첫 호출에서 모델을 로드하고 이후 재사용
+    result = run_session_inference(["q1.mp4", ..., "q5.mp4"])     # 같은 사람의 영상 여러 개
+    python inference.py --video_path my_interview.mp4             # CLI
 
-사용 1) 다른 코드(Gradio/FastAPI 등)에서 import:
-    from inference import run_inference
-    result = run_inference("my_interview.mp4")   # 첫 호출에서만 모델 전부 로드, 이후 재사용
-
-    체크포인트 폴더는 아래 순서로 찾는다:
-      run_inference(..., checkpoint_dir=...) 인자 > 환경변수 MINI_CRMF_CHECKPOINT_DIR >
-      <이 파일 위치>/../checkpoints/ 아래에 mlp_best.pt가 든 폴더가 정확히 1개일 때 그 폴더
-
-사용 2) 같은 사람의 영상 여러 개(세션, 예: 질문 5개 답변)를 한 번에:
-    from inference import run_session_inference
-    result = run_session_inference(["q1.mp4", "q2.mp4", "q3.mp4", "q4.mp4", "q5.mp4"])
-    각 영상의 점수를 "본인 예측 50% + 세션 평균 50%"로 섞어서 보정한다(같은 사람의 라벨이 비슷하다는 점을 이용,
-    검증에서 순위 정확도가 올랐음). 같은 사람의 영상만 넣어야 한다. 영상이 1개면 단일 영상 결과와 같다.
-    반환: {"session": {전체 점수}, "videos": [영상별 점수], "explanation"}
-
-사용 3) CLI:
-    python inference.py --video_path my_interview.mp4
-
-반환: {"scores": {타깃: {"raw", "percentile"(보정된 기대 백분위 0~100), "percentile_low/high"(80% 구간), "band"(상/중/하),
-      "rank_percentile"(보정 전 예측 순위 백분위)}}, "explanation", "transcript"}
-(JSON 직렬화 가능). 백분위는 checkpoint_dir의 percentile_reference.json(val 예측값 분포)
-기준이며, 절대 점수가 아니라 RecruitView 참가자 집단 대비 상대 위치다. 파일이 없으면
-raw만 반환.
+체크포인트 폴더는 checkpoint_dir 인자 > 환경변수 MINI_CRMF_CHECKPOINT_DIR > <이 파일 위치>/../checkpoints/ 순서로 찾는다.
+점수는 절대 점수가 아니라 RecruitView 참가자 집단 대비 백분위(percentile)와 80% 범위(percentile_low/high)다.
 """
 
 import argparse
@@ -165,11 +142,7 @@ def _load_finetuned_encoders(models, checkpoint_dir):
 
 
 def transcribe(video_path, whisper_model, device, language="en"):
-    """Whisper로 STT. RecruitView 학습 데이터는 transcript가 이미 주어져 있어서
-    이 단계가 없었지만, 새 영상은 transcript가 없으므로 여기서 직접 만든다.
-
-    language 기본값 "en": 학습에 쓴 텍스트 인코더(bert-base-uncased)와 학습 데이터가
-    영어라서. 영어가 아닌 발화를 그냥 넣으면 임베딩이 의미 없는 값이 된다."""
+    """Whisper로 STT한다. 학습 텍스트 인코더와 데이터가 영어라서 language 기본값은 en이다."""
     result = whisper_model.transcribe(video_path, language=language, fp16=(device == "cuda"))
     return clean_transcript(result["text"])
 
@@ -199,12 +172,7 @@ def transcribe_videos(video_paths, models=None, checkpoint_dir=None, whisper_mod
 
 def run_inference(video_path, models=None, checkpoint_dir=None, whisper_model="base",
                   device=None, language="en", transcript=None):
-    """영상 1개 -> 점수 dict (JSON 직렬화 가능).
-
-    models를 안 주면 모듈 전역에 캐시된 모델을 쓰고, 없으면 이 호출에서 처음 로드한다
-    (이후 호출은 재사용 — 서버처럼 반복 호출해도 매번 다시 로드하지 않음).
-
-    transcript: 대본 텍스트를 직접 주면 Whisper STT를 건너뛴다(학습 때와 같은 대본으로 정확히 비교하는 검증용)."""
+    """영상 1개 -> 점수 dict. models를 안 주면 처음 호출에서 로드한 전역 모델을 재사용한다. transcript를 주면 STT를 건너뛴다."""
     with _LOCK:
         models = _get_models(models, checkpoint_dir, whisper_model, device)
         return _predict(video_path, models, language, transcript)
@@ -304,12 +272,10 @@ def _calibration_text(cal, mode):
 
 
 def run_session_inference(video_paths, smoothing=None, transcripts=None, **kwargs):
-    """같은 사람의 영상 여러 개 -> 세션 점수 + 영상별 점수.
+    """같은 사람의 영상 여러 개 -> 세션 점수와 영상별 점수.
 
-    각 영상의 raw 예측을 smoothing*(자기 예측) + (1-smoothing)*(세션 평균)으로 보정한 뒤, "같은 방식으로 당긴 예측"으로 만든
-    보정 곡선(calibration.json의 session)으로 기대 백분위와 80% 구간을 계산한다. 세션 점수는 영상별 값의 평균.
-    smoothing 기본값은 체크포인트에 기록된 값(0.5). **같은 사람의 영상만 넣을 것.**
-    transcripts: 영상별 대본 리스트(주면 STT 생략). 나머지 kwargs는 run_inference로 전달."""
+        각 영상의 raw 예측을 smoothing*본인 + (1-smoothing)*세션 평균으로 섞은 뒤(기본 0.5) 세션용 보정 곡선으로 백분위를 낸다.
+        같은 사람의 영상만 넣을 것. transcripts를 주면 STT를 건너뛴다."""
     video_paths = list(video_paths)
     if not video_paths:
         raise ValueError("video_paths가 비어 있음")
@@ -385,10 +351,8 @@ MIN_WORDS, MIN_SECONDS = 13, 7.0  # 데이터셋 하위 5% 기준. 이보다 짧
 
 
 def _too_short(text, video_path, min_words, min_seconds):
-    """점수를 내면 안 되는 이유 리스트(비어 있으면 통과).
-
-    학습 데이터에서 답변이 짧을수록 정답 점수가 높았고(13단어 미만은 정답 평균 백분위 85), 모델이 그 경향을 배워서
-    아주 짧은 답변에 높은 점수를 준다. 이런 입력은 점수가 의미 없어서 점수 대신 이유를 돌려준다."""
+    """점수를 내면 안 되는 이유 리스트(비면 통과). 학습 데이터에서 짧은 답변의 정답 점수가 높아(13단어 미만은 평균 백분위 85)
+    모델이 짧은 답변에 높은 점수를 주기 때문이다."""
     reasons = []
     n_words = len(re.findall(r"[A-Za-z가-힣']+", text or ""))
     if min_words and n_words < min_words:
@@ -403,16 +367,11 @@ def _too_short(text, video_path, min_words, min_seconds):
 
 def analyze_session(video_paths, transcripts=None, questions=None, with_stats=True, guard=True,
                     min_words=MIN_WORDS, min_seconds=MIN_SECONDS, **kwargs):
-    """영상 N개(질문 순서) -> run_session_inference 결과 + 영상별 통계(stats) + LLM 프롬프트(llm_prompt).
+    """run_session_inference 결과에 영상별 통계(stats)와 LLM 프롬프트(llm_prompt)를 붙인다.
 
-    transcripts: STT 텍스트(transcribe_videos 결과)를 주면 그대로 재사용한다. 없으면 STT부터 한다.
-    questions: 질문 텍스트 리스트(선택, video_paths와 같은 순서). 주면 프롬프트에 질문이 들어간다.
-    with_stats=False면 통계/프롬프트 없이 점수 분석만 한다.
-    guard=True(기본): 너무 짧은 답변(min_words 단어 미만 또는 min_seconds초 미만)은 점수를 내지 않고
-      scores=None, skipped=True, warning에 이유를 담는다. 이런 영상은 세션 점수 계산에서도 제외한다.
-      그래도 with_stats면 통계와 llm_prompt(점수 없는 버전)는 만들어서 LLM이 내용을 평가할 수 있게 한다.
-    통계 추출이 한 영상에서 실패해도 전체 분석은 유지하고, 그 영상은 stats=None, stats_error에 이유를 담고
-    llm_prompt는 대본(+점수)만으로 만든 대체 프롬프트가 들어간다(Gemini 호출이 끊기지 않게)."""
+        transcripts: STT 텍스트(transcribe_videos 결과). 없으면 STT부터 한다. questions: 질문 텍스트 리스트(선택).
+        guard=True면 너무 짧은 답변(min_words 단어 또는 min_seconds초 미만)은 scores=None, skipped=True로 두고 세션 계산에서 뺀다.
+        통계 추출이 실패한 영상은 stats=None, stats_error를 담고, llm_prompt는 대본(+점수)만으로 만든다."""
     video_paths = list(video_paths)
     if questions is not None and len(questions) != len(video_paths):
         raise ValueError("questions 길이가 video_paths와 다름")

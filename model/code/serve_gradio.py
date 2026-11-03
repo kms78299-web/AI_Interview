@@ -1,25 +1,11 @@
 """
-Colab에서 Gradio 서버를 띄워 로컬 백엔드(FastAPI)가 HTTP로 호출하게 하는 파일.
+Colab에서 Gradio 서버를 띄워 로컬 백엔드가 HTTP로 호출하게 한다. API 사용법은 model/API.md.
 
-API 2개 (api_name):
-  /stt      영상 N개(질문 순서) -> 대본 텍스트 N개 (같은 순서의 JSON 리스트). STT만 한다.
-  /analyze  영상 N개 + 위 텍스트 -> {"session", "videos", "explanation"} (run_session_inference 형식)
-            + videos[i]에 "stats"(해석용 통계)와 "llm_prompt"(LLM에 그대로 보낼 프롬프트)가 추가됨.
-            텍스트를 주면 STT를 다시 돌리지 않고 그대로 점수 분석에 쓴다. 텍스트를 비우면 STT부터 한다.
-            questions_json(질문 텍스트 리스트, 선택)을 주면 프롬프트에 질문이 들어간다. with_stats=False면 통계 없이 점수만.
-
-Colab에서:
     !pip install -r requirements_colab.txt
     %cd model/code
-    !python serve_gradio.py --share          # 출력되는 https://xxxx.gradio.live 주소를 백엔드에 설정
+    !python serve_gradio.py --share     # 출력되는 gradio.live 주소를 백엔드에 설정
 
-로컬 백엔드에서 호출 (pip install gradio_client):
-    from gradio_client import Client, handle_file
-    client = Client("https://xxxx.gradio.live")
-    files = [handle_file(p) for p in video_paths]                      # 질문 순서대로
-    texts = client.predict(files, api_name="/stt")                     # ["1번 답변", ..., "5번 답변"]
-    result = client.predict(files, json.dumps(texts), "", True, api_name="/analyze")   # transcripts_json, questions_json(""=없음), with_stats
-영상 순서가 곧 질문 순서이고, 반환되는 텍스트와 videos도 같은 순서다. 질문 ID 연결은 백엔드가 한다.
+/stt: 영상 N개(질문 순서) -> 텍스트 N개.  /analyze: 영상 N개 + 텍스트 -> session / videos / explanation (+ stats, llm_prompt).
 """
 
 import argparse

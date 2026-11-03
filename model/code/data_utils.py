@@ -30,11 +30,7 @@ def load_metadata(metadata_path):
 
 
 def clean_transcript(raw_transcript):
-    """"[00:01 - 00:11] Hello everyone..." -> "Hello everyone...".
-
-    타임스탬프 패턴을 전부 제거하고 공백을 정리한다.
-    transcript가 없거나(None) 빈 문자열이면 빈 문자열을 반환한다.
-    """
+    """"[00:01 - 00:11] Hello..." 형태에서 타임스탬프를 지우고 공백을 정리한다. 없거나 비면 빈 문자열."""
     if not raw_transcript:
         return ""
     text = _TIMESTAMP_RE.sub(" ", raw_transcript)
@@ -43,13 +39,7 @@ def clean_transcript(raw_transcript):
 
 
 def discover_label_names(items):
-    """metadata 레코드들에서 라벨 필드 이름을 동적으로 뽑아낸다.
-
-    metadata.jsonl에 12개 라벨이 있다고 했지만 실제 필드명 전체가 예시에
-    나와있지 않아서, id/file_name/question/transcript를 제외한 나머지
-    숫자(int/float) 필드를 라벨로 취급한다. 레코드마다 필드 구성이 다를 수
-    있으니 전체 아이템을 훑어서 합집합을 만들고 정렬해 순서를 고정한다.
-    """
+    """metadata 레코드에서 숫자 필드(id, file_name, question, transcript 제외)를 라벨로 보고, 정렬한 이름 리스트를 반환한다."""
     label_names = set()
     for item in items:
         for key, value in item.items():

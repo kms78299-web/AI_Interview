@@ -1,13 +1,8 @@
 """
-Colab(또는 다른 환경)에서 run_inference가 학습 파이프라인과 같은 결과를 내는지 검증하기 위한 기준값 생성.
+run_inference가 학습 파이프라인과 같은 결과를 내는지 검증할 기준값(parity_reference.json)을 만든다.
 
-test split에서 대본이 있는 샘플 N개를 골라서:
-  1) 원본 영상을 model_parity/videos/ 로 복사 (영상은 계산 노드 로컬 디스크에만 있어서 그 노드에서 실행해야 함)
-  2) 저장된 캐시 특징(학습 때 쓴 것)으로 앙상블의 "기대 예측값"(raw, 백분위)을 계산 -> parity_reference.json
-기대값은 inference.py를 거치지 않고 따로 구현한 경로(캐시 특징 -> scaler -> 모델 5개 평균)라서,
-추론 코드와 독립적인 비교 기준이 된다.
-
-사용 (영상 복사 때문에 ariel-v7에서): sbatch run_parity_reference.sh
+test split 샘플 N개의 영상을 model_parity/videos/로 복사하고, 캐시 특징으로 앙상블의 기대 예측(raw, 백분위)을 계산한다.
+영상은 계산 노드 로컬 디스크에만 있어서 ariel-v7에서 실행한다: sbatch run_parity_reference.sh
 """
 
 import argparse

@@ -1,22 +1,11 @@
 """
-현재 최선 구성을 학습하고 서비스용으로 저장한다.
+최종 구성 학습: audio = wav2vec2 6층 평균, text = BERT, video = VideoMAE, MiniCRMF prefusion, 규제 R1(dropout 0.3, weight decay 0.05), seed 5개 앙상블.
+구성은 val 기준으로 골랐고 test는 선택 후 한 번만 평가했다.
 
-구성: audio = wav2vec2-base-960h의 6층 평균(중간 층) + text(BERT 마지막 층) + video(VideoMAE 기존 임베딩),
-      MiniCRMF prefusion, 규제 R1(dropout 0.3, weight decay 0.05), seed 5개 앙상블(예측 평균).
-선택 근거(run_combo.py 결과): audio 층 sweep에서 5~7층이 완만한 봉우리, R1이 val 최고, 앙상블이 추가로 상승.
-이 실험의 val 기준 선택이라 val 수치는 낙관적일 수 있고, 보고할 성능은 test(모델 선택 후 1회)다.
+저장 (checkpoints/<exp_name>/): mlp_seed{k}.pt, ensemble.json, config.json, scaler.pkl, label_stats.json,
+percentile_reference.json, metrics_report.json
 
-저장 (checkpoints/<exp_name>/):
-  mlp_seed{k}.pt          seed별 best-val epoch 모델 가중치 (5개)
-  ensemble.json           멤버 목록 (inference.py가 읽음)
-  config.json             구조/규제 설정 + audio_layer=6
-  scaler.pkl              {text, audio, video} StandardScaler (audio는 6층 특징 기준으로 새로 fit)
-  label_stats.json
-  percentile_reference.json  앙상블 예측의 val 분포 (0~100 변환 기준)
-  metrics_report.json     seed별 / 단일 모델 평균±표준편차 / 앙상블 val·test 지표
-
-사용:
-    python train_final_ensemble.py --smoke   # 동작 확인(seed 1개, 2 epoch, 결과 해석 금지)
+    python train_final_ensemble.py --smoke   # 동작 확인용 (seed 1개, 2 epoch)
     python train_final_ensemble.py
 """
 
