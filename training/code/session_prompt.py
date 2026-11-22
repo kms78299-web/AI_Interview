@@ -51,11 +51,12 @@ def _stat_lines(stats, reference):
     return lines
 
 
-def _answer_block(k, video, question):
+def _answer_block(k, video, question, model_info="full"):
     qid = f"Q{k + 1}"
     lines = [f"### {qid}" + (f" — 질문: {question}" if question else "")]
     if video.get("skipped"):
-        lines.append(f"(상태: 답변이 너무 짧아 모델 점수에서 제외됨 — {video.get('warning', '')})")
+        lines.append(f"(상태: 답변이 너무 짧아 모델 점수에서 제외됨 — {video.get('warning', '')})" if model_info != "none"
+                     else f"(상태: 답변이 매우 짧음 — {video.get('warning', '')})")
     if video.get("stats_error"):
         lines.append(f"(측정 일부 실패: {video['stats_error']} — 실패한 영역은 평가하지 않는다고 밝힐 것)")
     segments = video.get("segments") or []
@@ -67,12 +68,22 @@ def _answer_block(k, video, question):
     return qid, lines, segments
 
 
-def build_session_prompt(result, questions=None, reference=None):
-    """analyze_session 결과 -> 세션 단위 프롬프트 문자열 (답변 전체를 한 번에 평가)."""
+MODEL_INFO_LEVELS = ("full", "output_only", "none")
+
+
+def build_session_prompt(result, questions=None, reference=None, model_info="full"):
+    """analyze_session 결과 -> 세션 단위 프롬프트 문자열 (답변 전체를 한 번에 평가).
+
+    model_info: 모델 정보를 얼마나 넣을지 (LLM 평가 방식 비교 실험용).
+      "full"        모델 출력 + 학습 정보 + 성능·편향 정보와 사용 제한 (서비스 기본, session.llm_prompt)
+      "output_only" 모델 출력 + 학습 정보만 (성능, 편향, 사용 제한 없음)
+      "none"        모델 정보 없음 (측정값과 대본만)"""
+    if model_info not in MODEL_INFO_LEVELS:
+        raise ValueError(f"model_info는 {MODEL_INFO_LEVELS} 중 하나")
     videos = result["videos"]
     blocks, marker_lines, ids = [], [], []
     for k, video in enumerate(videos):
-        qid, lines, segments = _answer_block(k, video, None if questions is None else questions[k])
+        qid, lines, segments = _answer_block(k, video, None if questions is None else questions[k], model_info)
         ids.append(qid)
         stat_lines = _stat_lines(video.get("stats"), reference)
         blocks += lines + (["[측정값] (참가자 대비 백분위, 100에 가까울수록 값이 큰 편)"] + stat_lines if stat_lines else
@@ -83,20 +94,25 @@ def build_session_prompt(result, questions=None, reference=None):
 
     delivery = (result.get("session") or {}).get("delivery")
     model_lines = []
-    if delivery and delivery.get("scores", {}).get("overall_performance"):
+    has_model = bool(delivery and delivery.get("scores", {}).get("overall_performance"))
+    if has_model and model_info in ("output_only", "full"):  # full은 output_only에 성능·편향 정보와 사용 제한을 더한 것
         model_lines = [
             "[참고: 예측 모델의 사람 단위 전반적 인상]",
-            f"- {delivery['scores']['overall_performance']['band']} (RecruitView 평가자 판단을 학습한 모델이 이 사람의 답변 전체를 다른 지원자와 비교한 위치)",
+            f"- {delivery['scores']['overall_performance']['band']} (RecruitView 평가자 판단을 학습한 모델이 이 사람의 답변 전체를 다른 지원자와 비교한 위치)"]
+    if has_model and model_info == "full":
+        model_lines += [
             "- 이 모델은 사람 전체 단위로만 평가자 판단과 맞는다(Spearman 약 0.73). 같은 사람의 답변끼리는 거의 구분하지 못하므로 "
-            "답변 비교, 장면 선택, 세션 등급 결정에 쓰지 않는다. 내용은 보지 못하고, 간결하게 말하는 사람을 높게 보는 경향이 있다.",
-            ""]
+            "답변 비교, 장면 선택, 세션 등급 결정에 쓰지 않는다. 내용은 보지 못하고, 간결하게 말하는 사람을 높게 보는 경향이 있다."]
+    if model_lines:
+        model_lines.append("")
 
     rules = [
         "1. 대본과 측정값, 구간별 측정 관찰에 있는 것만 근거로 쓴다. 감정, 성격, 합격 가능성은 추측하지 않는다. 숫자 점수나 백분위를 새로 만들지 않는다.",
         "2. answer_feedback는 위 답변 순서대로 정확히 " + f"{len(ids)}개({', '.join(ids)})를 쓴다. "
         "content_band(상/중/하)는 그 답변의 텍스트 내용만 본다: 상=질문에 직접 답하고 구체적 근거와 구성이 충분함 / "
         "중=대체로 답하지만 근거나 설명 보완이 필요함 / 하=질문 핵심에 충분히 답하지 못하거나 핵심 설명이 크게 부족함. "
-        "음성·영상이나 예측 모델 인상은 반영하지 않는다. coaching_feedback는 좋았던 점을 짚고 답변을 어떻게 재구성하거나 구체화할지 "
+        + ("음성·영상이나 예측 모델 인상은 반영하지 않는다. " if model_info == "full" else "음성·영상은 반영하지 않는다. ") +
+        "coaching_feedback는 좋았던 점을 짚고 답변을 어떻게 재구성하거나 구체화할지 "
         "자연스럽게 이어 쓴 한 문단이다(제목을 붙여 나열하지 않는다). relevance는 질문에 직접 답했는지(적절/부분적/부적절, 대본이 비면 평가불가), "
         "specificity는 구체적 사례나 근거가 있는지, accuracy는 대본만으로 사실 확인이 안 되면 unverified로 둔다. "
         "대본이 비거나 평가할 수 없으면 status=insufficient_data, content_band=null, strength/improvement는 null.",
@@ -106,7 +122,7 @@ def build_session_prompt(result, questions=None, reference=None):
         "4. overall_band(세션 전체 상/중/하): 상=대부분의 답변이 질문에 직접 답하고 구체적이며 전달에 큰 방해가 적음 / "
         "중=대체로 답하지만 구체성이나 전달에 보완할 점이 있음 / 하=여러 답변에서 질문에 충분히 답하지 못했거나 전달에 큰 보완이 필요함. "
         "자료가 부족하면 null이고 status=insufficient_data. 짧은 답변, 한 번의 시선 이탈, 목소리 특성 하나만으로 하를 주지 않는다. "
-        "예측 모델의 인상을 등급으로 옮기지 않는다.",
+        + ("예측 모델의 인상을 등급으로 옮기지 않는다." if model_info == "full" else ""),
         "5. delivery_feedback의 각 항목에는 그 특징이 가장 잘 드러나는 대표 장면을 evidence 첫 번째로 1개 넣는다(최대 2개). "
         "위 대본에 있는 (question_id, segment_id)만 쓰고 시간은 쓰지 않는다. 개선점 장면은 구간별 측정 관찰에 걸린 구간을 우선 고르고, "
         "좋은 점 장면은 측정 관찰에 걸리지 않은 구간에서 측정값이 뒷받침할 때만 고른다. 근거 장면이 없으면 빈 배열로 둔다.",

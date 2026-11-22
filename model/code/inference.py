@@ -476,6 +476,10 @@ def analyze_session(video_paths, transcripts=None, questions=None, with_stats=Tr
                 delivery=delivery, segments=video.get("segments"))
     from session_prompt import build_session_prompt
     result["session"]["llm_prompt"] = build_session_prompt(result, questions, reference)  # 답변 전체를 한 번에 평가 (권장)
+    # LLM 평가 방식 비교 실험용: 모델 정보 없음 / 모델 출력과 학습 정보만 (llm_prompt는 성능·편향 정보까지 포함한 조건)
+    result["session"]["llm_prompt_compare"] = {
+        "no_model": build_session_prompt(result, questions, reference, model_info="none"),
+        "model_output": build_session_prompt(result, questions, reference, model_info="output_only")}
     return result
 
 

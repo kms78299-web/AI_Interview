@@ -83,6 +83,7 @@ result = client.predict(files, json.dumps(texts), json.dumps(questions), True,
 | `videos[i].segments` | 구간별 측정값과 마커(5장). `segments_json`을 줬거나 서버가 STT를 했을 때만 있다. |
 | `videos[i].llm_prompt` | 답변별 프롬프트(호환용, 6장) |
 | `session.llm_prompt` | 세션 전체 프롬프트(권장, 6장) |
+| `session.llm_prompt_compare` | LLM 평가 방식 비교 실험용 프롬프트 2개(6장). 서비스에서는 쓰지 않음 |
 
 영상이 1개면 세션 보정 없이 단일 영상 결과가 그대로 나온다(`smoothing: null`).
 
@@ -147,6 +148,19 @@ result = client.predict(files, json.dumps(texts), json.dumps(questions), True,
 - 음성·영상 좋은 점과 개선점은 각각 0~2개이고, 항목마다 **대표 장면 1개를 `evidence` 첫 번째**로 넣는다(최대 2개). 답변별 좋은·개선 구간은 만들지 않는다.
 - 프롬프트에 들어가는 것: 답변별 질문, 구간 ID와 시간이 붙은 대본(구간이 없으면 전체 대본), 측정값과 참가자 대비 백분위, 점수 제외·측정 실패 상태, 구간별 마커 전체,
   모델의 사람 단위 전반적 인상(`overall_performance` 하나, "답변 비교·장면 선택·등급에 쓰지 말 것" 명시), 작성 규칙(세션·질문별 등급 기준, 장면 선택 기준, 평가자 데이터에서 확인된 경향).
+
+### LLM 평가 방식 비교 실험용 프롬프트: `session.llm_prompt_compare`
+모델 출력이 LLM 평가에 기여하는지 비교하려고, 모델 정보의 양만 다른 세 가지 프롬프트를 함께 만든다. 대본, 측정값, 마커, 작성 규칙, 출력 형식은 셋 다 같다.
+**서비스에서는 `session.llm_prompt`만 쓰고, 이 두 개는 실험에서만 Gemini에 보낸다.**
+
+| 조건 | 필드 | 모델 정보 | 확인할 것 |
+|---|---|---|---|
+| A | `session.llm_prompt_compare.no_model` | 없음 (모델 언급 없이 측정값과 대본만) | 측정값만으로 얼마나 정확한 피드백이 가능한지 |
+| B | `session.llm_prompt_compare.model_output` | 사람 단위 전반적 인상(상/중/하) + 학습 정보 한 줄 | 점수만 줄 때 근거 없는 추측이 생기는지 |
+| C | `session.llm_prompt` (서비스 기본) | B + 성능(사람 단위 Spearman 약 0.73)·편향(같은 사람 답변 비교 불가, 내용 못 봄, 간결한 사람을 높게 봄)과 사용 제한 | 성능·편향 설명을 더한 효과가 있는지 |
+
+C는 B를 그대로 포함하고 성능·편향 줄과 "모델 인상을 등급으로 옮기지 않는다" 규칙만 더한다. 코드에서는 `build_session_prompt(result, questions, reference, model_info="none" | "output_only" | "full")`로 만든다.
+같은 세션을 세 조건으로 평가해 `overall_band`, `content_band`, 대표 장면, 근거 없는 추측(측정값에 없는 내용, 모델 점수를 근거로 든 설명)을 비교한다. 같은 조건을 여러 번 돌려 일관성도 본다.
 
 ### 대표 장면을 초 단위로 바꾸기
 LLM은 시간을 쓰지 않고 `(question_id, segment_id)`만 고른다. 시간은 서버가 만든 구간과 마커로 붙인다. 참고 구현은 `model/code/session_prompt.py`의 `resolve_evidence(feedback, analyze_result)`이며, 백엔드는 같은 규칙으로 처리하면 된다.
