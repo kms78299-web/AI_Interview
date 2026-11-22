@@ -150,6 +150,7 @@ result = client.predict(files, json.dumps(texts), json.dumps(questions), True,
   모델의 사람 단위 전반적 인상(`overall_performance` 하나, "답변 비교·장면 선택·등급에 쓰지 말 것" 명시), 작성 규칙(세션·질문별 등급 기준, 장면 선택 기준, 평가자 데이터에서 확인된 경향).
 
 ### LLM 평가 방식 비교 실험용 프롬프트: `session.llm_prompt_compare`
+실험 의도, 판단 기준, 미리 찍은 영상으로 돌리는 법은 `docs/llm-prompt-comparison.md`에 있다.
 모델 출력이 LLM 평가에 기여하는지 비교하려고, 모델 정보의 양만 다른 세 가지 프롬프트를 함께 만든다. 대본, 측정값, 마커, 작성 규칙, 출력 형식은 셋 다 같다.
 **서비스에서는 `session.llm_prompt`만 쓰고, 이 두 개는 실험에서만 Gemini에 보낸다.**
 
