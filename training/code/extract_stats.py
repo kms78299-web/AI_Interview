@@ -1,14 +1,12 @@
 """
-Track 2 (stats): LLM 피드백용 해석 가능한 통계 추출 + 프롬프트 만들기.
+LLM 피드백용 통계 추출과 프롬프트 생성.
 
-영상 1개 -> {audio, text, video 통계}를 하나의 dict로 모은다. 서비스에서는 extract_stats(video_path, transcript)를 부르면 되고,
-데이터셋 전체(2011개)는 아래 CLI로 features/stats/{id}.json에 저장한다. 저장한 값의 분포를 기준표(stats_reference.json)로 만들어 두면
-프롬프트에서 "이 값이 RecruitView 참가자 중 상위 몇 %인지"까지 LLM에게 줄 수 있다 (임의 기준값 대신 데이터 분포로 해석).
+extract_stats(video_path, transcript)가 영상 하나의 audio/text/video 통계를 dict로 돌려주고, build_feedback_prompt가 LLM 프롬프트를 만든다.
+데이터셋 전체는 CLI로 features/stats/{id}.json에 저장하고, --reference로 값의 분포(stats_reference.json)를 만든다.
 
-사용 (영상 파일은 ariel-v7에만 있으므로 sbatch -w ariel-v7 로 실행, run_extract_stats.sh 참고):
-    python extract_stats.py --limit 5            # 소량 확인
-    python extract_stats.py                       # 전체 추출 -> features/stats/{id}.json
-    python extract_stats.py --reference           # 저장된 값으로 stats_reference.json 만들기 (CPU, 영상 불필요)
+    python extract_stats.py --limit 5     # 소량 확인
+    python extract_stats.py               # 전체 (영상이 ariel-v7에 있으므로 run_extract_stats.sh)
+    python extract_stats.py --reference
 """
 
 import argparse
@@ -28,31 +26,55 @@ AUDIO_KEYS = ["pitch_mean", "pitch_std", "rms_mean", "rms_std", "silence_ratio",
 
 
 def _duration_sec(video_path):
-    import cv2
-    cap = cv2.VideoCapture(video_path)
-    fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
-    n = cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0
-    cap.release()
-    return float(n / fps) if n else 0.0
+    """영상 길이(초). 브라우저 WebM은 OpenCV의 FPS/프레임 수 메타데이터가 틀려서(프레임 수 음수, FPS 1000) 실제 타임스탬프로 센다."""
+    from video_stats import video_duration_sec
+    return video_duration_sec(video_path)
 
 
-def extract_stats(video_path, transcript):
-    """영상 + 대본(STT 결과 그대로) -> {"audio": {...}, "text": {...}, "video": {...}} (사람이 읽을 수 있는 값)."""
-    from audio_features import extract_audio_features
+def extract_stats(video_path, transcript, segments=None):
+    """영상 + 대본(STT 결과 그대로) -> {"audio": {...}, "text": {...}, "video": {...}} (사람이 읽을 수 있는 값).
+
+    audio와 video는 따로 추출해서 한쪽이 실패해도 나머지는 남기고, 실패 이유는 "errors"에 담는다.
+    segments(merge_whisper_segments 결과)를 주면 구간별 측정값과 규칙 마커를 "segments"에 담는다."""
+    from audio_features import audio_timeline, extract_audio_features
     from config import AUDIO_FEATURE_NAMES
+    from segment_stats import build_segment_features
     from text_features import extract_text_stats_for_prompt
-    from video_stats import extract_video_stats
+    from video_stats import summarize_timeline, video_timeline
 
-    vec = extract_audio_features(video_path)
-    audio = {k: float(v) for k, v in zip(AUDIO_FEATURE_NAMES, vec) if k in AUDIO_KEYS}
     text = extract_text_stats_for_prompt(transcript)
-    duration = _duration_sec(video_path)
-    audio["duration_sec"] = round(duration, 1)
-    audio["speaking_rate_wpm"] = round(text["answer_length"] / duration * 60, 1) if duration > 0 else 0.0
-    return {"audio": audio, "text": text, "video": extract_video_stats(video_path)}
+    audio, video, errors, timeline = {}, {}, {}, None
+    try:
+        vec = extract_audio_features(video_path)
+        audio = {k: float(v) for k, v in zip(AUDIO_FEATURE_NAMES, vec) if k in AUDIO_KEYS}
+    except Exception as e:
+        errors["audio"] = f"{type(e).__name__}: {e}"
+    try:
+        duration = _duration_sec(video_path)
+        if duration > 0:
+            audio["duration_sec"] = round(duration, 1)
+            audio["speaking_rate_wpm"] = round(text["answer_length"] / duration * 60, 1)
+    except Exception as e:
+        errors["duration"] = f"{type(e).__name__}: {e}"
+    try:
+        timeline = video_timeline(video_path)
+        video = summarize_timeline(timeline, video_path)
+    except Exception as e:
+        errors["video"] = f"{type(e).__name__}: {e}"
+    out = {"audio": audio, "text": text, "video": video}
+    if segments:
+        audio_tl = None
+        try:
+            audio_tl = audio_timeline(video_path)
+        except Exception as e:
+            errors["audio_timeline"] = f"{type(e).__name__}: {e}"
+        out["segments"] = build_segment_features(segments, timeline, audio_tl)
+    if errors:
+        out["errors"] = errors
+    return out
 
 
-# ───────────── 기준표 (데이터셋 분포) ─────────────
+# 기준표 (데이터셋 분포)
 
 NUMERIC_KEYS = {
     "audio": AUDIO_KEYS + ["duration_sec", "speaking_rate_wpm"],
@@ -87,7 +109,7 @@ def to_percentile(reference, group, key, value):
     return int(round(100 * np.searchsorted(vals, value, side="right") / len(vals)))
 
 
-# ───────────── LLM 프롬프트 ─────────────
+# LLM 프롬프트
 
 STAT_LABELS = {
     "audio": {"speaking_rate_wpm": "말 속도(분당 단어 수)", "silence_ratio": "침묵 비율",
@@ -107,7 +129,7 @@ STAT_LABELS = {
 NO_PERCENTILE = {"filler_count", "face_detected_ratio"}
 
 
-FEEDBACK_JSON_EXAMPLE = json.dumps({
+FEEDBACK_FIELDS = {
     "content_rating": "적절 | 부분적 | 부적절 중 하나",
     "content_reason": "내용 평가 이유 한 줄",
     "overall_band": "상 | 중 | 하 중 하나",
@@ -116,10 +138,27 @@ FEEDBACK_JSON_EXAMPLE = json.dumps({
     "audio": {"strength": "...", "improvement": "..."},
     "video": {"strength": "...", "improvement": "..."},
     "summary": "종합 조언 2~3문장",
-}, ensure_ascii=False, indent=2)
+}
+EVIDENCE_EXAMPLE = [{"segment_id": "S2", "kind": "strength | improvement 중 하나", "area": "text | audio | video 중 하나",
+                     "note": "이 구간에서 관찰된 근거 한 줄"}]
 
 
-def build_feedback_prompt(stats, model_result=None, question=None, reference=None):
+def _feedback_example(with_evidence):
+    fields = dict(FEEDBACK_FIELDS, evidence=EVIDENCE_EXAMPLE) if with_evidence else FEEDBACK_FIELDS
+    return json.dumps(fields, ensure_ascii=False, indent=2)
+
+
+def _clock(sec):
+    return f"{int(sec // 60)}:{int(sec % 60):02d}"
+
+
+def build_text_only_stats(transcript):
+    """영상/음성 통계 추출이 실패했을 때 쓰는 대체 입력: 대본과 대본 통계만 있고 audio/video는 비어 있다."""
+    from text_features import extract_text_stats_for_prompt
+    return {"audio": {}, "text": extract_text_stats_for_prompt(transcript), "video": {}}
+
+
+def build_feedback_prompt(stats, model_result=None, question=None, reference=None, delivery=None, segments=None):
     """통계(+선택: 모델 결과, 질문, 기준표) -> LLM에 줄 프롬프트 문자열.
 
     LLM에게 지키게 하는 원칙: (1) 관찰된 값만 근거로, (2) 값이 점수의 '원인'이라고 단정하지 않음, (3) 값의 의미 범위를 넘는 추측 금지."""
@@ -139,7 +178,9 @@ def build_feedback_prompt(stats, model_result=None, question=None, reference=Non
     if t.get("repeated_words"):
         extras.append(f"반복된 단어: {', '.join(t['repeated_words'])}")
     result_lines = []
-    if model_result:
+    if delivery:  # 세션(사람) 단위 전달 인상: 답변별 점수 대신 이것만 준다
+        result_lines = [f"- {name}: {d['band']}" for name, d in delivery["scores"].items()]
+    elif model_result:
         for name, s in model_result["scores"].items():
             rng = (f", 80% 범위 {s['percentile_low']}~{s['percentile_high']}"
                    if s.get("percentile_low") is not None else "")
@@ -147,9 +188,24 @@ def build_feedback_prompt(stats, model_result=None, question=None, reference=Non
     return "\n".join([
         "당신은 면접 연습 피드백을 쓰는 코치입니다. 아래는 면접 답변 영상에서 자동으로 측정한 값입니다.",
         *(["질문: " + question] if question else []),
-        "", "[답변 대본]", t["transcript"] or "(대본 없음)", "",
-        "[측정값]", *lines, *extras, "",
-        *(["[참고: 예측 모델 결과 — 참가자 집단 대비 상대 위치이며 절대 점수가 아님, 정확도는 중간 수준. "
+        "", "[답변 대본]" + (" (구간 ID와 시간 포함)" if segments else ""),
+        *([f"[{g['id']} {_clock(g['start'])}–{_clock(g['end'])}] {g['text']}" for g in segments] if segments
+          else [t["transcript"] or "(대본 없음)"]), "",
+        "[측정값]",
+        *(["(영상·음성 측정값 추출에 실패해 제공되지 않음. 대본과 대본 통계만으로 평가하고, 음성·시선·표정은 평가하지 않는다고 밝힌다)"]
+          if not stats["audio"] and not stats["video"] else []),
+        *(["(음성 측정값 추출에 실패함. 음높이·음량·침묵은 평가하지 않는다고 밝힌다)"]
+          if "audio" in stats.get("errors", {}) and stats["video"] else []),
+        *(["(영상 측정값 추출에 실패함. 시선·고개·표정은 평가하지 않는다고 밝힌다)"]
+          if "video" in stats.get("errors", {}) and stats["audio"] else []),
+        *lines, *extras, "",
+        *(["[구간별 측정 관찰] (자동 측정 기준에 걸린 것만 표시. 표시가 없는 구간은 기준에 걸린 것이 없음)",
+           *([f"- {g['id']}: " + "; ".join(m["detail"] for m in g["markers"]) for g in segments if g.get("markers")]
+             or ["- 기준에 걸린 구간 없음"]), ""] if segments else []),
+        *(["[참고: 예측 모델의 '전달 인상' — 이 사람의 답변 전체(목소리·영상)를 RecruitView 평가자 기준으로 본 상/중/하. "
+           "이 답변 하나의 평가가 아니며, 내용의 적절성은 판단하지 못하고, 평소 간결하게 말하는 사람을 높게 보는 경향이 있다]", *result_lines, ""]
+          if delivery and result_lines else
+          ["[참고: 예측 모델 결과 — 참가자 집단 대비 상대 위치이며 절대 점수가 아님, 정확도는 중간 수준. "
            "이 모델은 학습 데이터의 경향상 답변이 짧을수록 점수를 높게 주는 편이라, 내용의 적절성은 판단하지 못한다]", *result_lines, ""]
           if result_lines else ["[참고: 이 답변은 너무 짧거나 분석 조건에 맞지 않아 예측 모델 점수는 제공되지 않음]", ""]),
         "[작성 규칙]",
@@ -165,13 +221,16 @@ def build_feedback_prompt(stats, model_result=None, question=None, reference=Non
         "점수와 overall_band가 크게 다르면 band_reason에 이유를 쓴다.",
         "6. 텍스트(내용), 음성(속도·쉼·음량·음높이), 영상(시선·고개·표정) 각각 강점 1개와 개선점 1개. 근거가 부족한 영역은 '관찰된 값이 부족함'이라고 쓴다.",
         "7. 한국어, 친근하지만 단정적이지 않은 말투.",
+        *(["8. evidence: 강점과 개선점의 근거가 되는 구간을 segment_id로 인용한다. 위 대본에 있는 구간 ID만 쓴다. "
+           "음성·영상 근거는 구간별 측정 관찰에 있는 것만 쓰고, 내용 근거는 그 구간의 대본에서 찾는다. 근거 구간이 없으면 넣지 않는다."]
+          if segments else []),
         "",
         "[출력 형식] 아래 JSON 하나만 출력한다(설명 문장, 코드블록 표시 없이). 키 이름과 값의 종류를 정확히 지킨다.",
-        FEEDBACK_JSON_EXAMPLE,
+        _feedback_example(bool(segments)),
     ])
 
 
-# ───────────── 배치 CLI ─────────────
+# 배치 CLI
 
 def run_batch(args):
     out_dir = os.path.join(args.features_dir, "stats")

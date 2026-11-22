@@ -5,9 +5,7 @@ RECRUITVIEW feature extraction 공통 설정.
 
 import os
 
-# ─────────────────────────────────────────────
 # 기본 경로 (모두 argparse로 override 가능, extract_features.py 참고)
-# ─────────────────────────────────────────────
 DEFAULT_DATASET_ROOT = "/local_datasets/RecruitView"
 # metadata.jsonl은 리포 안(GANG2/)에 직접 두고 씀. 영상 파일 자체는 용량이 커서
 # 계속 /local_datasets/RecruitView 쪽(GPU 노드 로컬 데이터)을 기본 video_root로 둠.
@@ -39,9 +37,7 @@ DEFAULT_OPENFACE3_WEIGHTS_DIR = "/ceph_data/kms78299/repos/GANG2/openface3_weigh
 # metadata.jsonl 안에서 라벨이 아닌 필드들 (나머지 숫자 필드는 전부 라벨로 취급)
 METADATA_NON_LABEL_KEYS = {"id", "file_name", "question", "transcript"}
 
-# ─────────────────────────────────────────────
 # Video (OpenFace / MediaPipe 공용) — 순서 고정. npy 저장 순서 == 이 리스트 순서.
-# ─────────────────────────────────────────────
 VIDEO_FEATURE_NAMES = [
     "AU06_mean", "AU06_std",
     "AU12_mean", "AU12_std",
@@ -74,9 +70,7 @@ OPENFACE_SIF_PATH = os.environ.get(
 # (singularity exec ... which FeatureExtraction으로 직접 확인함).
 OPENFACE_SIF_BIN_PATH = "/home/openface-build/build/bin/FeatureExtraction"
 
-# ─────────────────────────────────────────────
 # Audio (librosa) — 순서 고정.
-# ─────────────────────────────────────────────
 AUDIO_SAMPLE_RATE = 16000
 AUDIO_N_MFCC = 13
 
@@ -99,9 +93,7 @@ AUDIO_FEATURE_NAMES = (
 DEFAULT_WAV2VEC2_MODEL_ID = "facebook/wav2vec2-base-960h"
 WAV2VEC2_EMBEDDING_DIM = 768
 
-# ─────────────────────────────────────────────
 # Text (BERT) — 순서 고정.
-# ─────────────────────────────────────────────
 TEXT_BERT_DIM = 768
 TEXT_STAT_NAMES = ["filler_word_count", "vocab_diversity", "answer_length"]
 TEXT_FEATURE_NAMES = [f"bert_{i}" for i in range(TEXT_BERT_DIM)] + TEXT_STAT_NAMES
@@ -114,9 +106,7 @@ FILLER_WORDS = ["um", "umm", "uh", "uhh", "uhm", "hmm", "hm", "er", "erm", "ah"]
 # transcript 안의 "[00:01 - 00:11]" 같은 타임스탬프 패턴
 TIMESTAMP_PATTERN = r"\[\s*\d{1,2}:\d{2}\s*-\s*\d{1,2}:\d{2}\s*\]"
 
-# ─────────────────────────────────────────────
 # LLM (Qwen2.5-Omni) 기반 면접 분석 — analyze_interviews_llm.py
-# ─────────────────────────────────────────────
 DEFAULT_QWEN_MODEL_ID = "Qwen/Qwen2.5-Omni-7B"
 # 참고용 예시(few-shot calibration) 데이터. "우수/평균/미흡/내용↑비언어↓/비언어↑내용↓"
 # 5개 카테고리별로 labels/text/audio/video 값이 어떻게 나오는지 보여주는 손으로 만든 예시.
@@ -135,13 +125,11 @@ INTERVIEW_LABEL_NAMES = [
     "overall_performance",
 ]
 
-# ─────────────────────────────────────────────
 # Track 1: embed (MLP 입력용, frozen encoder forward만) — 새 extract_features.py
 # --track embed --modality {audio,text,video} --encoder <name>
 #
 # Track 2: stats(해석 가능한 통계, LLM 피드백용)는 extract_stats.py가 audio_features.py(librosa 부분)/
 # text_features.py(extract_text_stats_for_prompt)/video_stats.py(MediaPipe)를 모아서 만든다 — 여기서 새로 정의 안 함.
-# ─────────────────────────────────────────────
 DEFAULT_FEATURES_DIR = "/ceph_data/kms78299/repos/GANG2/features"
 EMBED_DIM = 768  # 아래 세 인코더 전부 hidden_size=768
 
@@ -176,10 +164,8 @@ for _enc in VIDEO_EMBED_ENCODERS:
     ENCODER_TO_MODALITY[_enc] = "video"
 del _enc
 
-# ─────────────────────────────────────────────
 # mini CRMF (train_mini_crmf.py) — RECRUITVIEW 원논문(CRMF, arXiv:2512.00450)을
 # geometry/manifold/router 없이 단순화한 경량 fusion MLP.
-# ─────────────────────────────────────────────
 DEFAULT_META_PATH = "/ceph_data/kms78299/repos/GANG2/features/meta.csv"
 DEFAULT_SPLITS_DIR = "/ceph_data/kms78299/repos/GANG2/splits"
 DEFAULT_CHECKPOINTS_DIR = "/ceph_data/kms78299/repos/GANG2/checkpoints"

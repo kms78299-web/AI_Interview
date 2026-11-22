@@ -1,16 +1,10 @@
 """
-audio 층별 임베딩 추출 (최종 모델의 audio 입력 = wav2vec2 6층 평균).
+wav2vec2 audio 층별 임베딩 추출 (최종 모델의 audio 입력은 6층 평균).
 
-기존 임베딩(features/embed/wav2vec2-base)은 wav2vec2-base-960h의 마지막 층만 평균낸 768차원이었다. 이 모델은
-음성 인식으로 fine-tuning돼서 마지막 층은 말 내용 쪽으로 치우치므로, 모든 층(0~12)을 시간축으로 평균/표준편차 pooling해서
-저장하고 중간 층(6층)을 쓴다 (실험에서 5~7층이 완만한 봉우리였고 마지막 층이 최악).
+입력: features/raw/audio_wave/{id}.npy (cache_raw_inputs.py --modality audio)
+저장: features/embed_layers/audio/wav2vec2/{id}.npy  float32 (2, 13, 768)  [0]=층별 시간 평균, [1]=시간 표준편차
 
-입력: features/raw/audio_wave/{id}.npy (16kHz 모노 파형, cache_raw_inputs.py --modality audio로 만든 것)
-저장: features/embed_layers/audio/wav2vec2/{id}.npy  float32 (2, 13, 768)  [0]=시간 평균, [1]=시간 표준편차 (층별)
-검증: 층 12의 평균은 기존 임베딩과 같아야 하므로 처음 3개 샘플은 기존 파일과 비교해서 [VERIFY]로 출력한다.
-
-사용:
-    python extract_layers.py --what audio --limit 5   # 소량 확인 (이어서 전체 돌리면 이미 된 건 스킵)
+    python extract_layers.py --what audio --limit 5   # 소량 확인
     python extract_layers.py --what audio
 """
 

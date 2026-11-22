@@ -1,22 +1,12 @@
 """
-RECRUITVIEW feature 추출 — Track 1(embed)/Track 2(stats) 두 갈래 CLI.
+RecruitView feature 추출 CLI (--track embed: MLP 입력용 임베딩, --track stats: LLM 피드백용 통계).
 
-Track 1 (embed, MLP 입력용 — 지금 구현됨):
     python extract_features.py --track embed --modality audio --encoder wav2vec2-base --limit 5
     python extract_features.py --track embed --modality text  --encoder bert-base-uncased --limit 5
     python extract_features.py --track embed --modality video --encoder videomae --limit 5
 
-  - 모달리티별로 따로 실행/저장 (한 모달리티가 실패해도 다른 모달리티엔 영향 없음)
-  - encoder는 frozen, forward만 함 (fine-tuning 없음)
-  - 저장: features/embed/{encoder}/{id}.npy (float32, shape=(768,))
-  - 이미 있는 결과는 스킵(resume), 에러난 샘플은 로그 남기고 스킵
-
-Track 2 (stats, LLM 피드백용): extract_stats.py가 audio(librosa)/text(대본 통계)/video(video_stats.py, MediaPipe)를
-  features/stats/{id}.json 으로 저장한다. (--track stats는 extract_stats.run_batch로 위임)
-
-주의: 예전 extract_features.py(video/audio/text npy를 recruitview_features/ +
-audio_embeddings/ 에 한 번에 저장하던 단일 파이프라인)는 code/extract_features_legacy.py
-로 그대로 남겨뒀음 — 필요하면 거기서 재사용 가능.
+임베딩은 features/embed/{encoder}/{id}.npy (float32, 768)에 저장하고, 이미 있는 샘플은 건너뛴다.
+stats는 extract_stats.py가 처리한다.
 """
 
 import argparse

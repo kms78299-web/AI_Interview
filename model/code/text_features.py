@@ -1,8 +1,5 @@
 """
-Text feature 추출 (BERT 임베딩 + 텍스트 통계).
-
-BERT 모델은 샘플마다 새로 로드하면 너무 느리므로, extract_features.py에서
-한 번만 로드한 (tokenizer, model, device) 를 인자로 받아서 재사용한다.
+텍스트 특징 추출 (BERT 임베딩과 텍스트 통계). 모델은 extract_features.py에서 한 번 로드한 것을 넘겨받아 재사용한다.
 """
 
 import re
@@ -51,11 +48,7 @@ def _embed_bert(text, tokenizer, model, device, max_length=512):
 
 
 def extract_text_embedding(clean_text, tokenizer, model, device, max_length=512):
-    """Track 1(embed)용 범용 텍스트 임베딩 — bert-base-uncased/roberta-base 등
-    AutoModel로 로드되는 모델이면 뭐든 그대로 됨 (load_bert()로 로드한 거 그대로 씀).
-    clean_text가 비어있으면(빈 transcript) 0벡터를 반환한다 — 호출부에서
-    has_transcript=False로 따로 기록해야 함(meta.csv 쪽, 여기선 안 함).
-    """
+    """BERT류 모델로 텍스트 임베딩(768)을 만든다. 텍스트가 비면 0벡터를 반환한다."""
     if not clean_text:
         return np.zeros(EMBED_DIM, dtype=np.float32)
     return _embed_bert(clean_text, tokenizer, model, device, max_length=max_length)
@@ -69,13 +62,7 @@ _STOPWORDS = {
 
 
 def extract_text_stats_for_prompt(clean_text):
-    """LLM 프롬프트에 넣을 사람이 읽기 쉬운 텍스트 통계.
-
-    extract_text_features()와 달리 BERT/torch가 필요 없어서 가볍게 바로 쓸 수
-    있다. filler_words는 실제로 등장한 단어 목록(중복 제거), repeated_words는
-    2번 이상 등장한 단어/짧은 구절(휴리스틱, dummy_data 예시 흉내용이라 완벽한
-    알고리즘은 아님)을 뽑는다.
-    """
+    """LLM 프롬프트용 텍스트 통계(단어 수, 군더더기 말, 반복 단어, 어휘 다양성). BERT 없이 계산한다."""
     if not clean_text:
         return {
             "transcript": "",
@@ -112,12 +99,7 @@ def extract_text_stats_for_prompt(clean_text):
 
 
 def extract_text_features(clean_text, get_bert_fn, device):
-    """clean_text: data_utils.clean_transcript()로 이미 타임스탬프를 제거한 텍스트.
-
-    get_bert_fn: is_korean(bool) -> (tokenizer, model). 텍스트 언어(한글 포함
-    여부)에 따라 klue/bert-base 또는 bert-base-uncased를 골라 쓴다. 실제 로딩은
-    처음 필요할 때만 일어나도록 extract_features.py에서 캐싱해서 넘겨준다.
-    """
+    """clean_text(타임스탬프 제거됨)로 임베딩과 통계를 함께 만든다. get_bert_fn은 한글 여부에 따라 (tokenizer, model)을 돌려준다."""
     if not clean_text:
         # transcript가 비어있는 샘플: 에러로 취급하지 않고 0벡터로 채운다.
         bert_vec = np.zeros(TEXT_BERT_DIM, dtype=np.float32)

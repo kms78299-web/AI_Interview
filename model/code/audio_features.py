@@ -1,12 +1,5 @@
 """
-Audio feature 추출.
-
-두 갈래로 나뉜다:
-- extract_audio_features(): librosa 기반 손으로 뽑은 통계(MFCC/pitch/rms/...).
-  숫자 하나하나가 무슨 의미인지 사람이 읽을 수 있어서 LLM 프롬프트(해석용)에 씀.
-- extract_wav2vec2_embedding(): 사전학습된 wav2vec2로 뽑은 768차원 임베딩.
-  숫자 자체는 해석 불가능하지만 훨씬 풍부한 표현이라 MLP 입력(예측용)에 씀.
-둘 다 mp4에서 ffmpeg으로 오디오를 뽑은 뒤 분석한다는 점은 동일.
+Audio 특징 추출: librosa 통계(LLM 프롬프트용)와 wav2vec2 임베딩(MLP 입력용). 둘 다 ffmpeg으로 영상에서 오디오를 뽑아 쓴다.
 """
 
 import os
@@ -90,6 +83,32 @@ def extract_audio_features(video_path, sr=AUDIO_SAMPLE_RATE):
         return np.array([feats[name] for name in AUDIO_FEATURE_NAMES], dtype=np.float32)
 
 
+def audio_timeline(video_path, sr=AUDIO_SAMPLE_RATE, top_db=30):
+    """구간 분석용 시간축 값: 침묵 구간 [(시작, 끝)], 프레임별 음량(RMS)과 그 시간, 전체 길이(초).
+
+    침묵 기준(top_db=30)은 extract_audio_features의 silence_ratio와 같다."""
+    import librosa
+
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        wav_path = os.path.join(tmp_dir, "audio.wav")
+        _extract_wav(video_path, wav_path, sr=sr)
+        y, sr = librosa.load(wav_path, sr=sr, mono=True)
+    if y.size == 0:
+        raise RuntimeError(f"오디오 신호 길이가 0: {video_path}")
+    duration = y.size / sr
+    rms = librosa.feature.rms(y=y)[0]
+    rms_times = librosa.frames_to_time(np.arange(rms.size), sr=sr)
+    silences, prev = [], 0.0
+    for start, end in librosa.effects.split(y, top_db=top_db):
+        if start / sr > prev:
+            silences.append((prev, start / sr))
+        prev = end / sr
+    if prev < duration:
+        silences.append((prev, duration))
+    return {"duration": float(duration), "rms": rms, "rms_times": rms_times,
+            "silences": [(float(a), float(b)) for a, b in silences]}
+
+
 def load_wav2vec2(model_id, device):
     from transformers import Wav2Vec2FeatureExtractor, Wav2Vec2Model
 
@@ -99,11 +118,7 @@ def load_wav2vec2(model_id, device):
 
 
 def extract_wav2vec2_embedding(video_path, feature_extractor, model, device, sr=AUDIO_SAMPLE_RATE):
-    """wav2vec2로 오디오 전체를 하나의 고정 길이(768차원) 벡터로 요약.
-
-    프레임별(약 50Hz) hidden state를 시간축으로 mean-pooling — text_features.py의
-    BERT mean pooling과 같은 방식. MLP 입력용이라 사람이 읽을 수 있는 값은 아님.
-    """
+    """wav2vec2 마지막 층의 hidden state를 시간축으로 평균내 768차원 벡터로 만든다."""
     import librosa
     import torch
 
@@ -129,12 +144,7 @@ def extract_wav2vec2_embedding(video_path, feature_extractor, model, device, sr=
 
 
 def extract_wav2vec2_layer_embedding(video_path, feature_extractor, model, device, layer=6, sr=AUDIO_SAMPLE_RATE):
-    """wav2vec2의 지정한 층(0=임베딩 출력, 12=마지막)의 hidden state를 시간축으로 평균한 768차원 벡터.
-
-    extract_wav2vec2_embedding()은 마지막 층만 쓴다. wav2vec2-base-960h는 음성 인식으로 fine-tuning돼서
-    마지막 층은 말 내용 쪽으로 치우치므로, 억양 등이 남아 있는 중간 층(실험에서 5~7층이 좋았음)을 쓰려고 추가함.
-    파형 준비(ffmpeg 16kHz 모노 -> librosa)와 pooling은 기존과 같다.
-    """
+    """지정한 층(0~12)의 hidden state를 시간축으로 평균낸 768차원 벡터. 마지막 층은 음성 인식 쪽으로 치우쳐서 중간 층을 쓴다."""
     import librosa
     import torch
 

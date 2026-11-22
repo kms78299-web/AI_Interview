@@ -1,19 +1,10 @@
 """
-encoder fine-tuning용 "원본 입력" 캐시 생성 (최종 임베딩 캐시가 아님).
+encoder 입력 직전의 원본(영상 프레임, 오디오 파형)을 캐시한다.
 
-fine-tuning은 encoder의 마지막 층 일부가 매 step 바뀌므로, features/embed/ 에 이미 저장된
-최종 임베딩(768차원)을 쓰면 학습이 무효가 된다. 대신 encoder에 들어가기 전 입력을
-디코딩/전처리까지만 해서 저장해 두고, 학습 때 이 입력을 encoder에 통과시킨다.
-(영상 디코딩이 매 step마다 반복되면 너무 느려서 디코딩 결과만 미리 저장)
+    features/raw/video_pixels/{id}.npy  float16 (16,3,224,224)
+    features/raw/audio_wave/{id}.npy    float32 (L,)  (16kHz 모노)
 
-저장:
-  features/raw/video_pixels/{id}.npy  float16 (16,3,224,224)  — 기존 임베딩 추출과 같은
-      _sample_frames_uniform(16프레임 균등) + VideoMAEImageProcessor 결과 그대로
-  features/raw/audio_wave/{id}.npy    float32 (L,)             — ffmpeg 16kHz mono -> librosa
-      (feature extractor 정규화는 학습 때 적용, 기존 extract_wav2vec2_embedding과 동일)
-텍스트는 캐시 불필요(metadata.jsonl의 transcript를 학습 때 바로 토큰화).
-
-사용 (영상 파일은 계산 노드의 /local_datasets에 있으므로 sbatch로):
+사용 (영상은 계산 노드에 있으므로 sbatch):
     sbatch run_cache_raw.sh --modality video
     sbatch run_cache_raw.sh --modality audio
 """

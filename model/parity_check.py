@@ -1,12 +1,11 @@
 """
-run_inference가 학습 파이프라인과 같은 결과를 내는지 확인 (Colab 또는 로컬에서 실행).
+run_inference가 학습 파이프라인과 같은 결과를 내는지 확인한다 (Colab 또는 로컬).
 
-1단계(정확 비교): 학습 때와 같은 대본을 넘겨서(STT 생략) 영상+음성 경로와 모델/앙상블/scaler가 맞는지 확인.
-2단계(실사용): STT(Whisper)를 켜서 실제 사용과 같은 경로로 돌리고, 1단계와 얼마나 달라지는지 확인.
+1단계: 학습 때와 같은 대본을 넘겨(STT 생략) 영상·음성 경로와 모델·scaler를 확인한다.
+2단계: Whisper STT를 켜고 1단계와 얼마나 달라지는지 확인한다.
 
 사용 (Colab):
-    !python /content/drive/MyDrive/model_parity/parity_check.py \
-        --model_root /content/drive/MyDrive/model --parity_dir /content/drive/MyDrive/model_parity
+    !python /content/drive/MyDrive/model_parity/parity_check.py --model_root /content/drive/MyDrive/model --parity_dir /content/drive/MyDrive/model_parity
 """
 
 import argparse

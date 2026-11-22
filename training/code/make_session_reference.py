@@ -1,12 +1,8 @@
 """
 세션(같은 사람의 영상 여러 개) 점수의 0~100 변환 기준과 성능 기록을 만든다.
 
-배경: 같은 사람 영상의 예측을 사람 평균 쪽으로 당기면(a*자기 + (1-a)*사람 평균) 순위 정확도가 올랐다(session 실험,
-a=0.5를 val로 선택). 당긴 예측은 분산이 줄어서 단일 클립 기준 분포로 백분위를 계산하면 한쪽으로 쏠리므로,
-"사람 평균으로 당긴 val 예측"의 분포를 별도 기준으로 저장한다 (percentile_reference_session.json).
-
-패키지(model/checkpoints/...)의 모델 5개를 캐시된 특징으로 직접 돌려서 계산하므로, 학습 코드 경로와 독립적인 재현 검증도 겸한다
-(단일 클립 앙상블 val/test가 metrics_report.json과 같아야 함).
+사람 평균 쪽으로 당긴 val 예측의 분포를 percentile_reference_session.json으로 저장하고,
+session_report.json에 단일 클립/세션 보정 성능을 기록한다.
 
 사용: python make_session_reference.py [--model_dir ...] [--smoothing 0.5]
 """

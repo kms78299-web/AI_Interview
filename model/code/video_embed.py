@@ -1,13 +1,5 @@
 """
-VideoMAE 기반 video embedding — Track 1(embed), MLP 입력용.
-
-AU/gaze/pose 같은 해석 가능한 통계(video_features.py, Track 2: stats)와는
-완전히 별개. frozen encoder, forward만 하고 fine-tuning은 안 함.
-
-프레임 리사이즈/정규화(224x224 등)는 VideoMAEImageProcessor가 체크포인트의
-preprocessor_config.json 기준으로 알아서 처리해서 여기서 직접 다루지 않음 —
-config.VIDEO_EMBED_IMAGE_SIZE는 참고용 상수(실제로 HF config.json에서
-image_size=224로 확인됨)일 뿐 이 파일 코드에서 직접 쓰진 않는다.
+VideoMAE로 영상 임베딩(768차원)을 뽑는다. encoder는 고정하고 forward만 한다.
 """
 
 import numpy as np
@@ -16,21 +8,10 @@ from config import VIDEO_EMBED_NUM_FRAMES
 
 
 def _patch_qkv_bias(model, model_id):
-    """MCG-NJU/videomae-base 체크포인트의 attention bias 네이밍 불일치를 고친다.
+    """videomae-base 체크포인트의 q_bias/v_bias를 query/value.bias로 옮기고 key.bias는 0으로 둔다.
 
-    safetensors 헤더를 직접 읽어서 확인한 사실(추측 아님): 체크포인트에는
-    "query.bias"/"value.bias"가 아니라 "q_bias"/"v_bias"라는 이름으로 bias가
-    저장돼 있고, "key.bias"는 아예 없음(BEiT 계열 설계 — key는 원래 bias가 없고
-    query/value만 따로 bias를 둠). 현재 transformers의 VideoMAEModel 로더는 이
-    옛날 네이밍을 자동으로 못 찾아서, 그냥 로드하면 각 레이어의
-    query/key/value.bias 36개(12 layers x 3)가 전부 랜덤 초기화된 채로 남는다
-    (실제로 LOAD REPORT의 MISSING/UNEXPECTED로 확인함). weight는 전부 정상 로드됨
-    — bias만 이 문제가 있음.
-
-    고치는 법: 체크포인트의 원본 state_dict(허깅페이스 캐시에 이미 받아져 있는
-    파일, 재다운로드 없음)에서 q_bias/v_bias 값을 직접 꺼내 query.bias/value.bias
-    에 복사하고, key.bias는 원래 설계대로 0으로 고정한다.
-    """
+        체크포인트는 bias를 "q_bias"/"v_bias"로 저장하는데 transformers가 이 이름을 못 찾아서,
+        그대로 로드하면 bias가 랜덤 초기화된다."""
     import torch
     from huggingface_hub import hf_hub_download
     from safetensors.torch import load_file
@@ -76,11 +57,7 @@ def load_videomae(model_id, device):
 
 
 def _sample_frames_uniform(video_path, num_frames=VIDEO_EMBED_NUM_FRAMES):
-    """영상 전체에서 num_frames개를 균등 간격으로 뽑아 RGB np.array 리스트로 반환.
-
-    VideoMAE는 학습 때 고정된 프레임 수(기본 16)로 position embedding을 만들어서,
-    그 수를 맞춰서 넣어야 함 — 영상이 그보다 짧으면 마지막 프레임을 반복해서 채움.
-    """
+    """영상 전체에서 num_frames개를 균등 간격으로 뽑아 RGB 프레임 리스트로 반환한다. 짧은 영상은 마지막 프레임으로 채운다."""
     import cv2
 
     cap = cv2.VideoCapture(video_path)
