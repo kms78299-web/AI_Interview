@@ -42,6 +42,10 @@ RecruitView 면접 영상(2011개, 참가자 331명)으로 면접 점수 6개(in
 
 text를 빼도 성능은 거의 같고 길이 의존도 그대로다. 길이 뺀 라벨로 학습하면 길이 의존은 사라지지만 신호가 약하다.
 
+같은 사람 답변 순위 학습 실험(`train_within_rank.py`, 회귀 + λ × 같은 사람 쌍 순위 손실, 6개 점수, val / test):
+같은 사람 쌍 정확도(라벨 차이 0.5 초과)는 최종 모델 59.6% / 59.1%, '짧은 답변이 낫다' 규칙 56.2% / 54.9%였다.
+순위 손실 비중을 높이면 val에서 57.8%(λ=0) → 56.7%(0.5) → 55.3%(1)로 떨어져 개선되지 않았다. 같은 사람 안에서 길이 외 신호는 약하게만 있다(규칙 대비 +3~4%p, test 95% 구간 +0.7~+7.4%p).
+
 ## 실행 순서
 
 환경은 conda `recruitview`(torch 2.5.1+cu121, transformers 5.17.0, mediapipe 0.10.21, librosa 0.11.0, scikit-learn 1.7.2, numpy 1.26)이다.
@@ -62,14 +66,15 @@ text를 빼도 성능은 거의 같고 길이 의존도 그대로다. 길이 뺀
 실험용:
 - `sbatch scripts/run_train_mini_crmf.sh --encoders ... --fusion {prefusion,concat}`: 처음 기본 모델과 fusion 비교
 - `sbatch scripts/run_delivery.sh --label_mode {raw,length_resid}`: 전달력 전용 모델
+- `sbatch scripts/run_within_rank.sh`: 같은 사람 답변 순위 학습
 
 ## 폴더
 
 | 경로 | 내용 |
 |---|---|
-| `code/` | 특징 추출(`extract_features.py`, `extract_layers.py`, `cache_raw_inputs.py`), 학습(`train_mini_crmf.py`, `train_final_ensemble.py`, `train_delivery.py`), 기준표(`make_*.py`), LLM용 통계(`extract_stats.py`, `video_stats.py`, `segment_stats.py`) |
+| `code/` | 특징 추출(`extract_features.py`, `extract_layers.py`, `cache_raw_inputs.py`), 학습(`train_mini_crmf.py`, `train_final_ensemble.py`, `train_delivery.py`, `train_within_rank.py`), 기준표(`make_*.py`), LLM용 통계와 프롬프트(`extract_stats.py`, `video_stats.py`, `segment_stats.py`, `session_prompt.py`) |
 | `scripts/` | sbatch 래퍼 |
 | `splits/` | 사람 단위 분할 |
 | `features/`, `checkpoints/`, `logs/` | 생성물 (Git에 올리지 않음) |
 
-`video_stats.py`, `audio_features.py`, `extract_stats.py`, `segment_stats.py`는 `model/code/`와 같은 파일이다. 한쪽을 고치면 다른 쪽도 맞춘다.
+`video_stats.py`, `audio_features.py`, `extract_stats.py`, `segment_stats.py`, `session_prompt.py`는 `model/code/`와 같은 파일이다. 한쪽을 고치면 다른 쪽도 맞춘다.

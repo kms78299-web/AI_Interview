@@ -400,7 +400,8 @@ def session_delivery(videos, checkpoint_dir):
 
 def analyze_session(video_paths, transcripts=None, questions=None, with_stats=True, guard=True,
                     min_words=MIN_WORDS, min_seconds=MIN_SECONDS, segments=None, **kwargs):
-    """run_session_inference 결과에 사람 단위 전달 인상(session.delivery), 영상별 통계(stats), LLM 프롬프트(llm_prompt)를 붙인다.
+    """run_session_inference 결과에 사람 단위 전달 인상(session.delivery), 영상별 통계(stats), 답변별 LLM 프롬프트(videos[i].llm_prompt),
+    세션 전체 LLM 프롬프트(session.llm_prompt, 권장)를 붙인다.
 
         transcripts: STT 텍스트(transcribe_videos 결과). 없으면 STT부터 한다. questions: 질문 텍스트 리스트(선택).
         guard=True면 너무 짧은 답변(min_words 단어 또는 min_seconds초 미만)은 scores=None, skipped=True로 두고 세션 계산에서 뺀다.
@@ -473,6 +474,8 @@ def analyze_session(video_paths, transcripts=None, questions=None, with_stats=Tr
             video["llm_prompt"] = build_feedback_prompt(
                 build_text_only_stats(video["transcript"]), None, None if questions is None else questions[i], reference,
                 delivery=delivery, segments=video.get("segments"))
+    from session_prompt import build_session_prompt
+    result["session"]["llm_prompt"] = build_session_prompt(result, questions, reference)  # 답변 전체를 한 번에 평가 (권장)
     return result
 
 

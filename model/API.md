@@ -43,6 +43,7 @@ result = client.predict(files, json.dumps(texts), json.dumps(questions), True,
 | 사람 단위 (한 사람의 답변 평균) | 약 0.73. 3등분 상/중/하 일치 약 64%, 상↔하 역전 약 4% | 참고 신호로 사용 |
 | 답변 하나씩 | 약 0.53 | 단독 판단에 쓰지 않음 |
 | **같은 사람의 답변끼리 비교** | 0.15~0.18. 길이 영향을 빼면 약 0.07 | **쓰지 않음.** 사실상 가장 짧은 답변을 높게 봄 |
+| 같은 사람 답변 순위 학습 (쌍 순위 손실 추가) | 같은 사람 쌍 정확도 약 59%(최종 모델)에서 개선 없음. 순위 손실 비중을 높일수록 val에서 하락(57.8%→55.3%). '짧은 답변이 낫다' 규칙은 약 55% | **쓰지 않음** |
 | text 구간을 빼고 점수 변화 보기 (occlusion) | 문장을 빼면 답변이 짧아져 점수가 올라감 | **쓰지 않음** |
 | audio·video 구간 occlusion | 검증하지 않음 | 쓰지 않음 |
 
@@ -80,7 +81,8 @@ result = client.predict(files, json.dumps(texts), json.dumps(questions), True,
 | `videos[i].stats` | 음성·텍스트·영상 통계(사람이 읽을 수 있는 값) |
 | `videos[i].stats_error` | 통계 일부 또는 전체 추출 실패 이유. 실패해도 나머지 통계와 `llm_prompt`는 만든다. |
 | `videos[i].segments` | 구간별 측정값과 마커(5장). `segments_json`을 줬거나 서버가 STT를 했을 때만 있다. |
-| `videos[i].llm_prompt` | LLM에 그대로 보낼 프롬프트(6장) |
+| `videos[i].llm_prompt` | 답변별 프롬프트(호환용, 6장) |
+| `session.llm_prompt` | 세션 전체 프롬프트(권장, 6장) |
 
 영상이 1개면 세션 보정 없이 단일 영상 결과가 그대로 나온다(`smoothing: null`).
 
@@ -117,27 +119,48 @@ result = client.predict(files, json.dumps(texts), json.dumps(questions), True,
 
 ## 6. LLM(Gemini) 프롬프트와 응답
 
-백엔드가 `videos[i].llm_prompt`를 **수정하지 않고** Gemini에 보낸다. JSON 모드(`response_mime_type="application/json"`)를 켜고 `json.loads`로 파싱한다.
-
-**현재는 답변 1개당 프롬프트 1개다.** 응답 형식:
+### 세션 프롬프트 (권장): `session.llm_prompt`
+답변 전체를 **한 번에** 평가하는 프롬프트다. 백엔드는 이것을 **수정하지 않고** Gemini에 한 번 보낸다(JSON 모드 `response_mime_type="application/json"`, `json.loads`로 파싱).
+답변은 영상 순서대로 `Q1`, `Q2`… 로 표시되며, 백엔드가 순서로 실제 질문 ID와 연결한다. 출력은 데이터 전달 규약 7장·14장 형식이며, `schema_version`, `session_id`는 백엔드가 붙인다.
 
 ```json
 {
-  "content_rating": "적절 | 부분적 | 부적절",
-  "content_reason": "...",
-  "overall_band": "상 | 중 | 하",
-  "band_reason": "...",
-  "text":  {"strength": "...", "improvement": "..."},
-  "audio": {"strength": "...", "improvement": "..."},
-  "video": {"strength": "...", "improvement": "..."},
-  "summary": "...",
-  "evidence": [{"segment_id": "S2", "kind": "strength | improvement", "area": "text | audio | video", "note": "..."}]
+  "status": "ready | partial | insufficient_data",
+  "overall_band": "상 | 중 | 하 | null",
+  "band_reason": "...", "summary": "...",
+  "answer_feedback": [{"question_id": "Q1", "status": "evaluated | insufficient_data",
+                       "content_band": "상 | 중 | 하 | null",
+                       "coaching_feedback": "좋았던 점 + 재구성·구체화 방법을 이어 쓴 한 문단",
+                       "relevance": {"rating": "적절 | 부분적 | 부적절 | 평가불가", "reason": "..."},
+                       "specificity": "...", "accuracy": {"status": "supported | contradicted | unverified", "reason": "..."},
+                       "strength": "... 또는 null", "improvement": "... 또는 null"}],
+  "delivery_feedback": {"summary": "...",
+                        "strengths":    [{"modality": "audio | video", "feedback": "...", "suggestion": null, "scope": "single_answer | multiple_answers",
+                                          "related_question_ids": ["Q1"], "evidence": [{"question_id": "Q1", "segment_id": "S2"}]}],
+                        "improvements": [{"modality": "audio | video", "feedback": "...", "suggestion": "...", "scope": "...",
+                                          "related_question_ids": ["Q2"], "evidence": [{"question_id": "Q2", "segment_id": "S3"}]}]},
+  "limitations": ["..."]
 }
 ```
 
-- `evidence`는 구간이 있을 때만 요청한다. 내용이 `부적절`이면 `overall_band`는 `하`, `부분적`이면 `상`이 나오지 않는다.
-- 프롬프트에는 대본(구간이 있으면 `[S2 0:04–0:08] ...` 형식), 음성·영상 통계와 데이터셋 대비 백분위, 구간별 마커, 모델의 사람 단위 상/중/하(`session.delivery`, 참고 신호)가 들어간다.
-- **데이터 전달 규약의 세션 단위 출력(질문별 내용 5개 + 세션 `overall_band` 하나 + 전달 피드백의 `evidence: [{question_id, segment_id}]`)에 맞춘 세션 프롬프트는 아직 없다.** 만들 예정이며, 만들기 전까지는 답변별 응답을 백엔드가 모아서 쓴다.
+- `content_band`는 그 답변의 텍스트 내용만 본 등급이다(음성·영상, 모델 인상은 반영하지 않음). 화면 본문은 `coaching_feedback`이고, `relevance`, `specificity`, `accuracy`, `strength`, `improvement`는 내부 분석·호환용이다.
+- 음성·영상 좋은 점과 개선점은 각각 0~2개이고, 항목마다 **대표 장면 1개를 `evidence` 첫 번째**로 넣는다(최대 2개). 답변별 좋은·개선 구간은 만들지 않는다.
+- 프롬프트에 들어가는 것: 답변별 질문, 구간 ID와 시간이 붙은 대본(구간이 없으면 전체 대본), 측정값과 참가자 대비 백분위, 점수 제외·측정 실패 상태, 구간별 마커 전체,
+  모델의 사람 단위 전반적 인상(`overall_performance` 하나, "답변 비교·장면 선택·등급에 쓰지 말 것" 명시), 작성 규칙(세션·질문별 등급 기준, 장면 선택 기준, 평가자 데이터에서 확인된 경향).
+
+### 대표 장면을 초 단위로 바꾸기
+LLM은 시간을 쓰지 않고 `(question_id, segment_id)`만 고른다. 시간은 서버가 만든 구간과 마커로 붙인다. 참고 구현은 `model/code/session_prompt.py`의 `resolve_evidence(feedback, analyze_result)`이며, 백엔드는 같은 규칙으로 처리하면 된다.
+
+1. `Qk`의 `segment_id`가 `videos[k-1].segments`에 없으면 버리고 기록한다(`dropped`).
+2. 좋은 점(`strengths`)의 장면 중 마커가 걸린 구간(`rule_flag == "issue"`)은 쓰지 않는다.
+3. 시간: 그 구간에 마커가 있으면 **첫 마커 시간**(`start` ~ `start + dur`), 없으면 **문장 구간 전체**(`start` ~ `end`).
+4. 재생 시작: `max(0, start - 1초)`. 항목마다 남은 첫 장면이 대표 장면이다.
+
+예: `{"question_id": "Q1", "segment_id": "S4"}`(개선점) → Q1 영상 12.1~15.0초("2.9초간 말이 멈춤"), 11.1초부터 재생.
+
+### 답변별 프롬프트 (호환용): `videos[i].llm_prompt`
+이전 방식이다. 답변 하나만 보고 `content_rating`, `overall_band`, 텍스트·음성·영상별 강점과 개선점, `evidence: [{segment_id, kind, area, note}]`를 돌려준다.
+세션 프롬프트를 쓰면 호출하지 않는다(중복 호출 금지).
 
 ## 7. 데이터 규약 요청 항목에 대한 답
 
@@ -148,10 +171,10 @@ result = client.predict(files, json.dumps(texts), json.dumps(questions), True,
 | 구간 시간 | 각 영상 시작이 0인 초 단위, 소수 둘째 자리. Whisper 기준(소리 기준) 시간이다. |
 | 일부 영상의 구간이 없을 때 | `segments_json`에서 그 영상 자리에 `[]`를 넣으면, 그 영상만 구간 없이 분석된다. |
 | 측정값, `markers`, `rule_flag` | 5장 |
-| Gemini `evidence` 모양 | 6장 (현재 답변 단위). 세션 단위 형식은 규약에 맞춰 새로 만든다. |
+| Gemini `evidence` 모양 | 6장. 세션 프롬프트의 `delivery_feedback[].evidence`는 `{question_id, segment_id}` 형식이고 첫 번째가 대표 장면이다. `question_id`는 순서 기반 `Q1`… |
 | 같은 구간이 strength와 improvement로 둘 다 인용되면 | 규약 제안대로 **개선 우선**에 동의 |
-| 구간 후보가 여럿일 때 우선순위 | 마커가 있는 구간을 우선하고, 그다음 LLM이 인용한 구간. 모델 점수로는 고르지 않는다(2장). |
-| 상대 비교·occlusion 검증 | 2장. 같은 사람 답변 비교와 text occlusion은 쓰지 않는다. audio·video occlusion은 검증하지 않았다. |
+| 구간 후보가 여럿일 때 우선순위 | LLM이 항목마다 대표 장면을 `evidence` 첫 번째로 고른다. 개선점은 마커가 걸린 구간을 우선한다. 모델 점수로는 고르지 않는다(2장). |
+| 상대 비교·occlusion 검증 | 2장. 같은 사람 답변 비교는 순위 학습으로도 개선되지 않았다. text occlusion은 쓰지 않는다. audio·video occlusion은 검증하지 않았다. |
 
 ## 8. 주의
 
