@@ -141,10 +141,16 @@ def _load_finetuned_encoders(models, checkpoint_dir):
         print(f"[INFO] fine-tuned {modality} encoder 층 {entry['layer_indices']} 가중치 로드 ({len(entry['state'])}개 텐서)")
 
 
+def transcribe_with_segments(video_path, whisper_model, device, language="en"):
+    """Whisper STT -> {"text": 전체 대본, "segments": [{"id": "S1", "start", "end", "text"}]} (3초 미만 문장은 합침)."""
+    from segment_stats import merge_whisper_segments
+    result = whisper_model.transcribe(video_path, language=language, fp16=(device == "cuda"))
+    return {"text": clean_transcript(result["text"]), "segments": merge_whisper_segments(result.get("segments", []))}
+
+
 def transcribe(video_path, whisper_model, device, language="en"):
     """Whisper로 STT한다. 학습 텍스트 인코더와 데이터가 영어라서 language 기본값은 en이다."""
-    result = whisper_model.transcribe(video_path, language=language, fp16=(device == "cuda"))
-    return clean_transcript(result["text"])
+    return transcribe_with_segments(video_path, whisper_model, device, language)["text"]
 
 
 def _get_models(models, checkpoint_dir, whisper_model, device):
@@ -157,8 +163,10 @@ def _get_models(models, checkpoint_dir, whisper_model, device):
     return models
 
 
-def transcribe_videos(video_paths, models=None, checkpoint_dir=None, whisper_model="base", device=None, language="en"):
+def transcribe_videos(video_paths, models=None, checkpoint_dir=None, whisper_model="base", device=None, language="en",
+                      with_segments=False):
     """영상 여러 개 -> 대본 텍스트 리스트 (video_paths와 같은 순서). STT만 하고 점수 분석은 하지 않는다.
+    with_segments=True면 [{"text", "segments"}] 리스트를 돌려준다(구간별 피드백용).
 
     UI가 텍스트를 먼저 보여 준 뒤 같은 텍스트를 run_session_inference(video_paths, transcripts=...)에 넘기면
     STT를 다시 돌리지 않고 그 텍스트 그대로 점수 분석에 쓴다."""
@@ -167,7 +175,8 @@ def transcribe_videos(video_paths, models=None, checkpoint_dir=None, whisper_mod
         raise ValueError("video_paths가 비어 있음")
     with _LOCK:
         models = _get_models(models, checkpoint_dir, whisper_model, device)
-        return [transcribe(p, models["whisper"], models["device"], language=language) for p in video_paths]
+        out = [transcribe_with_segments(p, models["whisper"], models["device"], language=language) for p in video_paths]
+    return out if with_segments else [r["text"] for r in out]
 
 
 def run_inference(video_path, models=None, checkpoint_dir=None, whisper_model="base",
@@ -365,22 +374,52 @@ def _too_short(text, video_path, min_words, min_seconds):
     return reasons
 
 
+def _band(value, cuts):
+    return "하" if value <= cuts[0] else ("중" if value <= cuts[1] else "상")
+
+
+def session_delivery(videos, checkpoint_dir):
+    """점수가 있는 영상들의 raw 평균 -> 사람 단위 '전달 인상' 상/중/하 (person_reference.json, RecruitView 331명 기준).
+
+    모델은 같은 사람의 답변끼리는 잘 못 가리지만(Spearman 약 0.17) 사람 단위로는 잘 맞아서(약 0.73), 영상별 점수 대신 이것을 쓴다.
+    band_length_adjusted는 평균 답변 길이 영향을 뺀 값이다(평가자도 간결한 사람을 높게 봐서, 빼면 정답과의 일치는 낮아진다)."""
+    ref = _load_json(checkpoint_dir, "person_reference.json")
+    scored = [v for v in videos if v.get("scores")]
+    if ref is None or not scored:
+        return None
+    mean_len = float(np.mean([np.log1p(len(re.findall(r"[A-Za-z가-힣']+", v["transcript"] or ""))) for v in scored]))
+    scores = {}
+    for name, r in ref["targets"].items():
+        raw = float(np.mean([v["scores"][name]["raw"] for v in scored]))
+        adjusted = raw - (r["len_coef"][0] + r["len_coef"][1] * mean_len)
+        scores[name] = {"band": _band(raw, r["cuts"]), "band_length_adjusted": _band(adjusted, r["cuts_adjusted"]),
+                        "raw_mean": round(raw, 4)}
+    return {"n_videos": len(scored), "scores": scores,
+            "note": "답변 전체(목소리·영상)를 RecruitView 평가자 기준으로 본 사람 단위 인상입니다. 내용의 적절성은 판단하지 못합니다."}
+
+
 def analyze_session(video_paths, transcripts=None, questions=None, with_stats=True, guard=True,
-                    min_words=MIN_WORDS, min_seconds=MIN_SECONDS, **kwargs):
-    """run_session_inference 결과에 영상별 통계(stats)와 LLM 프롬프트(llm_prompt)를 붙인다.
+                    min_words=MIN_WORDS, min_seconds=MIN_SECONDS, segments=None, **kwargs):
+    """run_session_inference 결과에 사람 단위 전달 인상(session.delivery), 영상별 통계(stats), LLM 프롬프트(llm_prompt)를 붙인다.
 
         transcripts: STT 텍스트(transcribe_videos 결과). 없으면 STT부터 한다. questions: 질문 텍스트 리스트(선택).
         guard=True면 너무 짧은 답변(min_words 단어 또는 min_seconds초 미만)은 scores=None, skipped=True로 두고 세션 계산에서 뺀다.
-        통계 추출이 실패한 영상은 stats=None, stats_error를 담고, llm_prompt는 대본(+점수)만으로 만든다."""
+        통계 추출이 실패한 영상은 stats=None, stats_error를 담고, llm_prompt는 대본(+점수)만으로 만든다.
+        segments: 영상별 문장 구간 리스트(transcribe_videos(with_segments=True) 결과). 있으면 videos[i].segments에
+        구간별 측정값과 규칙 마커를 넣고, 프롬프트에 구간 ID를 붙여 evidence를 받게 한다. transcripts도 없으면 STT에서 같이 만든다."""
     video_paths = list(video_paths)
     if questions is not None and len(questions) != len(video_paths):
         raise ValueError("questions 길이가 video_paths와 다름")
+    if segments is not None and len(segments) != len(video_paths):
+        raise ValueError("segments 길이가 video_paths와 다름")
     model_kwargs = {k: kwargs[k] for k in ("models", "checkpoint_dir", "whisper_model", "device", "language") if k in kwargs}
+    if transcripts is None:  # STT를 여기서 한 번만 하고 대본과 구간을 같이 얻는다
+        stt = transcribe_videos(video_paths, with_segments=True, **model_kwargs)
+        transcripts = [r["text"] for r in stt]
+        segments = segments if segments is not None else [r["segments"] for r in stt]
 
     skipped = {}
     if guard:
-        if transcripts is None:
-            transcripts = transcribe_videos(video_paths, **model_kwargs)
         for i, path in enumerate(video_paths):
             reasons = _too_short(transcripts[i], path, min_words, min_seconds)
             if reasons:
@@ -405,26 +444,35 @@ def analyze_session(video_paths, transcripts=None, questions=None, with_stats=Tr
         result = {"session": ({**sub["session"], "n_skipped": len(skipped)} if sub else
                               {"n_videos": 0, "n_skipped": len(skipped), "smoothing": None, "scores": None}),
                   "videos": videos, "explanation": ((sub["explanation"] + " ") if sub else "") + note}
+    models = kwargs.get("models") or _MODELS
+    checkpoint_dir = (models or {}).get("checkpoint_dir") or kwargs.get("checkpoint_dir") or _default_checkpoint_dir()
+    delivery = session_delivery(result["videos"], checkpoint_dir)
+    result["session"]["delivery"] = delivery
+    if segments is not None:
+        for i, video in enumerate(result["videos"]):
+            video["segments"] = segments[i]
     if not with_stats:
         return result
 
     from extract_stats import build_feedback_prompt, build_text_only_stats, extract_stats
-    models = kwargs.get("models") or _MODELS
-    checkpoint_dir = (models or {}).get("checkpoint_dir") or kwargs.get("checkpoint_dir") or _default_checkpoint_dir()
     reference = _load_json(checkpoint_dir, "stats_reference.json")
     for i, video in enumerate(result["videos"]):
         try:
-            stats = extract_stats(video_paths[i], video["transcript"])
+            stats = extract_stats(video_paths[i], video["transcript"], segments=None if segments is None else segments[i])
+            if "segments" in stats:  # 구간별 측정값과 마커는 영상 단위 필드로 옮긴다
+                video["segments"] = stats.pop("segments")
             video["stats"] = stats
+            if stats.get("errors"):  # audio/video 중 일부만 실패: 나머지 통계로 프롬프트를 만든다
+                video["stats_error"] = "; ".join(f"{k}: {v}" for k, v in stats["errors"].items())
             video["llm_prompt"] = build_feedback_prompt(
-                stats, {"scores": video["scores"]} if video["scores"] else None,
-                None if questions is None else questions[i], reference)
+                stats, None, None if questions is None else questions[i], reference, delivery=delivery,
+                segments=video.get("segments"))
         except Exception as e:  # 얼굴 미검출, 영상 읽기 실패 등: 이 영상의 통계만 포기하고, 대본+점수만으로 대체 프롬프트를 만든다
             video["stats"] = None
             video["stats_error"] = f"{type(e).__name__}: {e}"
             video["llm_prompt"] = build_feedback_prompt(
-                build_text_only_stats(video["transcript"]), {"scores": video["scores"]} if video["scores"] else None,
-                None if questions is None else questions[i], reference)
+                build_text_only_stats(video["transcript"]), None, None if questions is None else questions[i], reference,
+                delivery=delivery, segments=video.get("segments"))
     return result
 
 

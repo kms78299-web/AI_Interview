@@ -5,7 +5,8 @@ Colab에서 Gradio 서버를 띄워 로컬 백엔드가 HTTP로 호출하게 한
     %cd model/code
     !python serve_gradio.py --share     # 출력되는 gradio.live 주소를 백엔드에 설정
 
-/stt: 영상 N개(질문 순서) -> 텍스트 N개.  /analyze: 영상 N개 + 텍스트 -> session / videos / explanation (+ stats, llm_prompt).
+/stt: 영상 N개(질문 순서) -> 텍스트 N개.  /stt_segments: 영상 N개 -> [{"text", "segments"}] N개 (문장 구간과 시간 포함).
+/analyze: 영상 N개 + 텍스트(+ 구간) -> session / videos / explanation (+ stats, segments, llm_prompt).
 """
 
 import argparse
@@ -27,6 +28,27 @@ def stt_api(files, language="en"):
     return inference.transcribe_videos(_paths(files), language=language)
 
 
+def stt_segments_api(files, language="en"):
+    return inference.transcribe_videos(_paths(files), language=language, with_segments=True)
+
+
+def _segments_list(text, n):
+    """segments_json: 영상별 구간 리스트의 리스트 ([[{"id", "start", "end", "text"}, ...], ...])."""
+    if not text or not text.strip():
+        return None
+    try:
+        value = json.loads(text)
+    except json.JSONDecodeError as e:
+        raise gr.Error(f"segments_json이 JSON이 아님: {e}")
+    ok = isinstance(value, list) and all(
+        isinstance(v, list) and all(isinstance(g, dict) and {"id", "start", "end", "text"} <= set(g) for g in v) for v in value)
+    if not ok:
+        raise gr.Error('segments_json은 영상별 [{"id", "start", "end", "text"}] 리스트의 리스트여야 함')
+    if len(value) != n:
+        raise gr.Error(f"segments_json {len(value)}개와 영상 {n}개의 개수가 다름")
+    return value
+
+
 def _json_list(text, name, n):
     if not text or not text.strip():
         return None
@@ -41,11 +63,11 @@ def _json_list(text, name, n):
     return value
 
 
-def analyze_api(files, transcripts_json="", questions_json="", with_stats=True):
+def analyze_api(files, transcripts_json="", questions_json="", with_stats=True, segments_json=""):
     paths = _paths(files)
     return inference.analyze_session(paths, transcripts=_json_list(transcripts_json, "transcripts_json", len(paths)),
                                      questions=_json_list(questions_json, "questions_json", len(paths)),
-                                     with_stats=with_stats)
+                                     with_stats=with_stats, segments=_segments_list(segments_json, len(paths)))
 
 
 def build_app():
@@ -56,10 +78,13 @@ def build_app():
         transcripts = gr.Textbox(label="transcripts_json (비우면 STT부터)", lines=3)
         questions = gr.Textbox(label="questions_json (선택, 프롬프트에 질문 포함)", lines=2)
         with_stats = gr.Checkbox(label="통계/LLM 프롬프트 포함", value=True)
+        segments = gr.Textbox(label="segments_json (선택, /stt_segments 결과의 segments를 영상 순서대로)", lines=3, value="")
         stt_out = gr.JSON(label="STT 결과")
         result_out = gr.JSON(label="분석 결과")
         gr.Button("STT만").click(stt_api, [files, language], stt_out, api_name="stt")
-        gr.Button("점수 분석").click(analyze_api, [files, transcripts, questions, with_stats], result_out, api_name="analyze")
+        gr.Button("STT + 문장 구간").click(stt_segments_api, [files, language], stt_out, api_name="stt_segments")
+        gr.Button("점수 분석").click(analyze_api, [files, transcripts, questions, with_stats, segments], result_out,
+                                    api_name="analyze")
     return demo.queue(default_concurrency_limit=1)  # 모델이 하나라 요청을 한 번에 하나씩 처리
 
 

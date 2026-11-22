@@ -105,29 +105,37 @@ def iter_sampled_frames(video_path, sample_fps=5.0, max_seconds=180.0):
         cap.release()
 
 
-def extract_video_stats(video_path, sample_fps=5.0, max_seconds=180.0):
+def video_timeline(video_path, sample_fps=5.0, max_seconds=180.0):
+    """샘플 프레임마다 실제 시간과 얼굴 지표를 남긴다: {"times": [...], "feats": [dict 또는 None(얼굴 없음)], "step": 샘플 간격}."""
     import cv2
     import mediapipe as mp
 
-    feats, times, n_seen = [], [], 0
+    times, feats = [], []
     mesh = mp.solutions.face_mesh.FaceMesh(static_image_mode=False, max_num_faces=1, refine_landmarks=True,
                                            min_detection_confidence=0.5, min_tracking_confidence=0.5)
     try:
         for t, frame in iter_sampled_frames(video_path, sample_fps, max_seconds):
-            n_seen += 1
             h, w = frame.shape[:2]
             res = mesh.process(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
+            f = None
             if res.multi_face_landmarks:
                 lm = np.array([[l.x, l.y, l.z] for l in res.multi_face_landmarks[0].landmark])
                 f = _frame_features(lm, w, h)
-                if f is not None:
-                    feats.append(f)
-                    times.append(t)
+            times.append(t)
+            feats.append(f)
     finally:
         mesh.close()
+    return {"times": times, "feats": feats, "step": 1.0 / sample_fps}
 
-    if len(feats) < 3:
-        raise RuntimeError(f"얼굴이 거의 검출되지 않음 (샘플 {n_seen}프레임 중 {len(feats)}개): {video_path}")
+
+def summarize_timeline(timeline, video_path=""):
+    """video_timeline 결과 -> 영상 전체 요약 통계 (얼굴이 잡힌 프레임 기준)."""
+    pairs = [(t, f) for t, f in zip(timeline["times"], timeline["feats"]) if f is not None]
+    n_seen = len(timeline["times"])
+    if len(pairs) < 3:
+        raise RuntimeError(f"얼굴이 거의 검출되지 않음 (샘플 {n_seen}프레임 중 {len(pairs)}개): {video_path}")
+    times = [t for t, _ in pairs]
+    feats = [f for _, f in pairs]
 
     col = lambda k: np.array([f[k] for f in feats])  # noqa: E731
     gx, gy = col("gx"), col("gy")
@@ -139,7 +147,7 @@ def extract_video_stats(video_path, sample_fps=5.0, max_seconds=180.0):
     closed = eye_open < 0.6 * np.median(eye_open)  # 그 사람의 평소 눈 뜬 정도보다 크게 줄면 깜빡임으로 간주
     blinks = int(np.sum(closed[1:] & ~closed[:-1])) + int(closed[0])
     span = times[-1] - times[0]  # 얼굴이 잡힌 첫 샘플부터 마지막 샘플까지의 실제 시간(초)
-    duration_min = (span if span > 0 else len(feats) / sample_fps) / 60.0
+    duration_min = (span if span > 0 else len(feats) * timeline["step"]) / 60.0
 
     return {
         "face_detected_ratio": float(len(feats) / max(n_seen, 1)),
@@ -155,3 +163,7 @@ def extract_video_stats(video_path, sample_fps=5.0, max_seconds=180.0):
         "mouth_width_std": float(col("mouth_width").std()),
         "n_frames_used": float(len(feats)),
     }
+
+
+def extract_video_stats(video_path, sample_fps=5.0, max_seconds=180.0):
+    return summarize_timeline(video_timeline(video_path, sample_fps, max_seconds), video_path)

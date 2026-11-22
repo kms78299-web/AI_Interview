@@ -83,6 +83,32 @@ def extract_audio_features(video_path, sr=AUDIO_SAMPLE_RATE):
         return np.array([feats[name] for name in AUDIO_FEATURE_NAMES], dtype=np.float32)
 
 
+def audio_timeline(video_path, sr=AUDIO_SAMPLE_RATE, top_db=30):
+    """구간 분석용 시간축 값: 침묵 구간 [(시작, 끝)], 프레임별 음량(RMS)과 그 시간, 전체 길이(초).
+
+    침묵 기준(top_db=30)은 extract_audio_features의 silence_ratio와 같다."""
+    import librosa
+
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        wav_path = os.path.join(tmp_dir, "audio.wav")
+        _extract_wav(video_path, wav_path, sr=sr)
+        y, sr = librosa.load(wav_path, sr=sr, mono=True)
+    if y.size == 0:
+        raise RuntimeError(f"오디오 신호 길이가 0: {video_path}")
+    duration = y.size / sr
+    rms = librosa.feature.rms(y=y)[0]
+    rms_times = librosa.frames_to_time(np.arange(rms.size), sr=sr)
+    silences, prev = [], 0.0
+    for start, end in librosa.effects.split(y, top_db=top_db):
+        if start / sr > prev:
+            silences.append((prev, start / sr))
+        prev = end / sr
+    if prev < duration:
+        silences.append((prev, duration))
+    return {"duration": float(duration), "rms": rms, "rms_times": rms_times,
+            "silences": [(float(a), float(b)) for a, b in silences]}
+
+
 def load_wav2vec2(model_id, device):
     from transformers import Wav2Vec2FeatureExtractor, Wav2Vec2Model
 
