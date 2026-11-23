@@ -71,6 +71,14 @@ def _answer_block(k, video, question):
 MODEL_INFO_LEVELS = ("full", "output_only", "none")
 
 
+def _stable_desc(g):
+    """좋은 점 장면 후보 한 개: 구간 ID와 좋은 점의 근거로 쓸 수 있는 측정값(말 속도, 가장 긴 멈춤)."""
+    st = g.get("stats") or {}
+    facts = ([f"분당 {st['wpm']:.0f}단어"] if st.get("wpm") is not None else []) + \
+            ([f"가장 긴 멈춤 {st['longest_pause_sec']:.1f}초"] if st.get("longest_pause_sec") is not None else [])
+    return g["id"] + (f"({', '.join(facts)})" if facts else "")
+
+
 def build_session_prompt(result, questions=None, reference=None, model_info="full"):
     """analyze_session 결과 -> 세션 단위 프롬프트 문자열 (답변 전체를 한 번에 평가).
 
@@ -92,7 +100,7 @@ def build_session_prompt(result, questions=None, reference=None, model_info="ful
             if g.get("markers"):
                 marker_lines.append(f"- {qid} {g['id']}: " + "; ".join(m["detail"] for m in g["markers"]))
         if segments:
-            stable = [g["id"] for g in segments if g.get("rule_flag") == "stable"]
+            stable = [_stable_desc(g) for g in segments if g.get("rule_flag") == "stable"]
             stable_lines.append(f"- {qid}: " + (", ".join(stable) if stable else "없음"))
 
     delivery = (result.get("session") or {}).get("delivery")
@@ -113,7 +121,9 @@ def build_session_prompt(result, questions=None, reference=None, model_info="ful
 
     rules = [
         "1. 대본과 측정값, 구간별 측정 관찰에 있는 것만 근거로 쓴다. 감정, 성격, 합격 가능성은 추측하지 않는다. 숫자 점수나 백분위를 새로 만들지 않는다. "
-        "긴장, 자신감, 당황, 준비 부족, 성의 같은 내적 상태나 태도로 해석하지 말고 관찰된 행동(말 속도, 멈춤, 음량, 시선 등)과 대본 내용으로만 쓴다.",
+        "긴장, 자신감, 당황, 준비 부족, 성의 같은 내적 상태나 태도로 해석하지 말고 관찰된 행동(말 속도, 멈춤, 음량, 시선 등)과 대본 내용으로만 쓴다. "
+        "이 금지는 평가뿐 아니라 coaching_feedback, suggestion 같은 조언 문장에도 적용한다('자신감 있게', '당황하지 않고' 같은 표현도 쓰지 않는다). "
+        "답변의 성격은 대본에 있는 그대로 묘사한다(예: '질문을 이해하지 못했다고 답함'. '답변을 거부함', '준비하지 못함'처럼 대본에 없는 의도나 상태로 바꾸지 않는다).",
         "2. answer_feedback는 위 답변 순서대로 정확히 " + f"{len(ids)}개({', '.join(ids)})를 쓴다. "
         "content_band(상/중/하)는 그 답변의 텍스트 내용만 본다: 상=질문에 직접 답하고 구체적 근거와 구성이 충분함 / "
         "중=대체로 답하지만 근거나 설명 보완이 필요함 / 하=질문 핵심에 충분히 답하지 못하거나 핵심 설명이 크게 부족함. "
@@ -126,7 +136,10 @@ def build_session_prompt(result, questions=None, reference=None, model_info="ful
         "'답변하지 않았다'가 아니라 '인식된 대본이 없어 내용 평가를 유보한다'고 쓴다.",
         "3. 음성·영상은 답변 전체를 함께 검토해 delivery_feedback 하나로 쓴다. 좋은 점(strengths)과 개선점(improvements)은 각각 0~2개. "
         "scope는 관련 답변이 1개면 single_answer, 2개 이상이면 multiple_answers이고, 여러 답변의 경향이라고 쓸 때는 그 답변들에 실제 관찰이 있어야 한다. "
-        "개선점에는 suggestion(구체적인 개선 방법)을 쓴다.",
+        "개선점에는 suggestion(구체적인 개선 방법)을 쓴다. "
+        "좋은 점은 [좋은 점 장면 후보]에 적힌 측정값이 일반적인 말하기 기준(말 속도 분당 100~180단어, 2초 이상 멈춤 없음)을 충족한 사실로만, 값을 들어 쓴다. "
+        "음량, 음높이, 목소리·발성, 시선·정면 응시, 표정, 눈 깜빡임은 좋은 점의 근거로도 쓰지 않는다. "
+        "군더더기 말이 없다는 것도 좋은 점으로 쓰지 않는다(음성 인식이 um, uh 같은 말을 빠뜨릴 수 있다). 근거가 없으면 strengths는 빈 배열로 둔다.",
         "4. overall_band(세션 전체 상/중/하): 상=대부분의 답변이 질문에 직접 답하고 구체적이며 전달에 큰 방해가 적음 / "
         "중=대체로 답하지만 구체성이나 전달에 보완할 점이 있음 / 하=여러 답변에서 질문에 충분히 답하지 못했거나 전달에 큰 보완이 필요함. "
         "status: 모든 답변이 evaluated면 ready, 일부가 insufficient_data면 partial, 전부면 insufficient_data(overall_band=null). "

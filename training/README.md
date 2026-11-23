@@ -89,6 +89,11 @@ text를 빼도 성능은 거의 같고 길이 의존도 그대로다. 길이 뺀
 - `sbatch scripts/run_delivery.sh --label_mode {raw,length_resid}`: 전달력 전용 모델
 - `sbatch scripts/run_within_rank.sh`: 같은 사람 답변 순위 학습
 - `python code/analyze_stat_labels.py`: 측정값과 평가자 라벨의 관계 (CPU, 몇 분)
+- LLM 프롬프트 검증 (RecruitView 사람 1명 = 세션 1개, val로 비교·수정, test는 최종 프롬프트로 한 번만):
+  1. `sbatch scripts/run_llm_eval_prepare.sh --split val`: 서비스와 같은 analyze_session으로 사람별 A/B/C 프롬프트 생성 (ariel-v7, openai-whisper 필요)
+  2. `GEMINI_API_KEY=... python code/llm_eval_gemini.py --split val`: Gemini 응답 저장 (조건별 3회, 순서 ABC/BCA/CAB)
+  3. `python code/llm_eval_score.py --split val`: 규칙 위반률, 반복 일관성, 모델 등급 복사 비율, 평가자 라벨 일치(길이 보정, 기준선 포함). 판정 기준은 파일 맨 위에 있다.
+  결과는 `llm_eval/`(Git에 올리지 않음).
 
 ## 폴더
 
