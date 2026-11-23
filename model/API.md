@@ -110,7 +110,7 @@ result = client.predict(files, json.dumps(texts), json.dumps(questions), True,
 |---|---|
 | `gaze_away` | 시선이 정면에서 크게 벗어난 상태가 1초 이상 연속 |
 | `face_missing` | 얼굴이 1초 이상 연속으로 안 잡힘 |
-| `long_pause` | 침묵 2초 이상 (직전 문장과의 공백 포함) |
+| `long_pause` | 침묵 2초 이상 (직전 문장과의 공백 포함. 첫 문장 앞, 질문 직후 생각하는 시간은 세지 않음) |
 | `pace_slow` / `pace_fast` | 구간 말 속도 분당 100단어 미만 / 180단어 초과 (3초 이상 구간만) |
 | `fillers` | um, uh 등 군더더기 말 2회 이상 |
 
@@ -146,8 +146,11 @@ result = client.predict(files, json.dumps(texts), json.dumps(questions), True,
 
 - `content_band`는 그 답변의 텍스트 내용만 본 등급이다(음성·영상, 모델 인상은 반영하지 않음). 화면 본문은 `coaching_feedback`이고, `relevance`, `specificity`, `accuracy`, `strength`, `improvement`는 내부 분석·호환용이다.
 - 음성·영상 좋은 점과 개선점은 각각 0~2개이고, 항목마다 **대표 장면 1개를 `evidence` 첫 번째**로 넣는다(최대 2개). 답변별 좋은·개선 구간은 만들지 않는다.
-- 프롬프트에 들어가는 것: 답변별 질문, 구간 ID와 시간이 붙은 대본(구간이 없으면 전체 대본), 측정값과 참가자 대비 백분위, 점수 제외·측정 실패 상태, 구간별 마커 전체,
-  모델의 사람 단위 전반적 인상(`overall_performance` 하나, "답변 비교·장면 선택·등급에 쓰지 말 것" 명시), 작성 규칙(세션·질문별 등급 기준, 장면 선택 기준, 평가자 데이터에서 확인된 경향).
+- 프롬프트에 들어가는 것: 답변별 질문, 구간 ID와 시간이 붙은 대본(구간이 없으면 전체 대본), 측정값과 참가자 대비 백분위, 짧은 답변·측정 실패 상태, 구간별 마커 전체, 좋은 점 장면 후보(`rule_flag == "stable"`인 구간 목록),
+  모델의 사람 단위 전반적 인상(`overall_performance` 하나, "답변 비교·장면 선택·등급에 쓰지 말 것" 명시), 작성 규칙(세션·질문별 등급 기준, 장면 선택 기준, 측정값 해석 기준).
+- 측정값 해석 기준(v3): RecruitView에서 측정값과 평가자 라벨의 관계를 길이 영향을 빼고 분석한 결과(`training/README.md`)로 정했다.
+  같은 사람의 답변끼리는 어떤 측정값도 평가와 관계가 없어 답변 우열 근거로 쓰지 않는다. 관계가 없는 값(침묵 비율, 시선, 머리 움직임, 얼굴 인식, 어휘 다양성, 길이)은 좋고 나쁨의 근거로 쓰지 않는다.
+  약한 경향이 있는 값(음량, 음량 변동, 음높이, 눈 깜빡임, 입 모양)은 개인차와 녹화 환경 영향이 커서 단정하거나 바꾸라고 조언하지 않는다. 말 속도, 멈춤, 군더더기 말은 마커에 걸린 경우에만 일반 기준으로 지적한다.
 
 ### LLM 평가 방식 비교 실험용 프롬프트: `session.llm_prompt_compare`
 실험 의도, 판단 기준, 미리 찍은 영상으로 돌리는 법은 `docs/llm-prompt-comparison.md`에 있다.
@@ -157,11 +160,15 @@ result = client.predict(files, json.dumps(texts), json.dumps(questions), True,
 | 조건 | 필드 | 모델 정보 | 확인할 것 |
 |---|---|---|---|
 | A | `session.llm_prompt_compare.no_model` | 없음 (모델 언급 없이 측정값과 대본만) | 측정값만으로 얼마나 정확한 피드백이 가능한지 |
-| B | `session.llm_prompt_compare.model_output` | 사람 단위 전반적 인상(상/중/하) + 학습 정보 한 줄 | 점수만 줄 때 근거 없는 추측이 생기는지 |
+| B | `session.llm_prompt_compare.model_output` | 사람 단위 전반적 인상(상/중/하) + 학습 정보(데이터 규모, 상대 점수, 상/중/하 산출 방식) | 점수만 줄 때 근거 없는 추측이 생기는지 |
 | C | `session.llm_prompt` (서비스 기본) | B + 성능(사람 단위 Spearman 약 0.73)·편향(같은 사람 답변 비교 불가, 내용 못 봄, 간결한 사람을 높게 봄)과 사용 제한 | 성능·편향 설명을 더한 효과가 있는지 |
 
 C는 B를 그대로 포함하고 성능·편향 줄과 "모델 인상을 등급으로 옮기지 않는다" 규칙만 더한다. 코드에서는 `build_session_prompt(result, questions, reference, model_info="none" | "output_only" | "full")`로 만든다.
 같은 세션을 세 조건으로 평가해 `overall_band`, `content_band`, 대표 장면, 근거 없는 추측(측정값에 없는 내용, 모델 점수를 근거로 든 설명)을 비교한다. 같은 조건을 여러 번 돌려 일관성도 본다.
+
+- 상태 규칙(v2): 대본이 있으면 짧거나 "질문을 이해하지 못했다"는 내용이어도 `evaluated`로 평가한다. 인식된 대본이 없을 때만 `insufficient_data`이고 "답변하지 않았다"고 단정하지 않는다.
+  세션 `status`는 모두 `evaluated`면 `ready`, 일부가 `insufficient_data`면 `partial`(평가된 답변만으로 등급), 전부면 `insufficient_data`(등급 null)다.
+- 감정·태도(긴장, 자신감, 준비 부족 등)로 해석하지 않고 관찰된 행동과 대본으로만 쓰게 한다.
 
 ### 대표 장면을 초 단위로 바꾸기
 LLM은 시간을 쓰지 않고 `(question_id, segment_id)`만 고른다. 시간은 서버가 만든 구간과 마커로 붙인다. 참고 구현은 `model/code/session_prompt.py`의 `resolve_evidence(feedback, analyze_result)`이며, 백엔드는 같은 규칙으로 처리하면 된다.

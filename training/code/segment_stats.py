@@ -4,7 +4,7 @@
 마커는 고정 기준이다. 연출 녹화(일부러 옆 보기, 침묵 넣기 등)로 잡히는지 확인하고 기준값을 조정한다.
   gaze_away     시선이 정면에서 크게 벗어난 상태가 GAZE_AWAY_MIN_SEC 이상 연속
   face_missing  얼굴이 FACE_MISSING_MIN_SEC 이상 연속으로 안 잡힘
-  long_pause    침묵이 LONG_PAUSE_SEC 이상 (이 구간 직전의 문장 사이 공백 포함)
+  long_pause    침묵이 LONG_PAUSE_SEC 이상 (직전 문장과의 공백 포함. 첫 문장 앞, 질문 직후 생각하는 시간은 세지 않음)
   pace_slow/pace_fast  구간 말 속도가 WPM_SLOW 미만 / WPM_FAST 초과 (PACE_MIN_SEC 이상 구간만)
   fillers       군더더기 말(um, uh 등)이 FILLER_MIN회 이상
 """
@@ -137,7 +137,7 @@ def build_segment_features(segments, video_tl=None, audio_tl=None):
             stats.update(st)
             markers += mk
         if audio_tl is not None:
-            st, mk = _audio_part(audio_tl, segments[i - 1]["end"] if i else 0.0, seg["start"], seg["end"])
+            st, mk = _audio_part(audio_tl, segments[i - 1]["end"] if i else seg["start"], seg["start"], seg["end"])
             stats.update(st)
             markers += mk
         measured = video_tl is not None and audio_tl is not None
