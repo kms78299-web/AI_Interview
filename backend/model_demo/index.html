@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="영어 자기소개 영상 한 개로 RecruitView 모델의 예측 결과를 확인합니다.">
+  <title>RecruitView · Model Lab</title>
+  <link rel="stylesheet" href="/demo.css">
+  <script type="module" src="/demo.js"></script>
+</head>
+<body>
+  <header class="top"><div class="shell top-inner">
+    <div class="brand"><span class="mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M3 12h4l3-6 4 12 3-6h4"/></svg></span><strong>RecruitView</strong><span class="divider"></span><span class="lab">Model Lab</span></div>
+    <span class="badge"><span class="dot"></span> MODEL DEMO</span>
+  </div></header>
+  <main class="shell">
+    <section class="hero">
+      <p class="eyebrow"><span class="hero-line"></span> SINGLE QUESTION EVALUATION</p>
+      <h1>자기소개 모델 테스트<span>.</span></h1>
+      <p>답변 영상 하나로 RecruitView의 평가 결과를 확인해 보세요.</p>
+    </section>
+    <section class="question" aria-labelledby="question">
+      <div class="q-number" aria-hidden="true">01</div>
+      <div><p class="q-label">QUESTION 01 <span>자기소개</span></p><h2 id="question">Tell me about yourself.</h2><p class="translation">자기소개를 해 주세요.</p></div>
+      <span class="q-language">ENGLISH</span>
+    </section>
+    <div class="workspace">
+      <section class="panel" aria-labelledby="input-heading">
+        <div class="panel-head"><span class="step">01</span><div><h2 id="input-heading">답변 영상</h2><p>카메라로 녹화하거나 기존 영상을 올리세요.</p></div></div>
+        <div class="preview" id="preview">
+          <div class="placeholder" id="video-placeholder"><div class="video-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><rect x="3" y="6" width="12" height="12" rx="2"/><path d="m15 10 6-3v10l-6-3"/></svg></div><strong>영상 미리보기</strong><span>MP4 · WebM · MOV / 최대 100MB</span></div>
+          <video id="player" playsinline hidden></video>
+          <span class="timer" id="timer" hidden></span>
+        </div>
+        <div class="controls">
+          <button id="record" type="button">카메라 켜기</button>
+          <button id="cancel-camera" type="button" hidden>카메라 끄기</button>
+          <button id="stop" type="button" hidden>녹화 종료</button>
+          <button id="upload" type="button">영상 업로드</button>
+          <input id="file" type="file" accept="video/webm,video/mp4,video/quicktime,.webm,.mp4,.mov" hidden>
+        </div>
+        <p id="input-note" class="note">영어로 7초 이상, 13단어 이상 답변해 주세요. 녹화는 최대 60초입니다.</p>
+        <p id="error" class="error" role="alert" hidden></p>
+        <button class="primary" id="analyze" type="button" disabled><span>모델 분석 실행</span><span aria-hidden="true">→</span></button>
+      </section>
+      <section class="panel output" aria-labelledby="result-heading" id="output" tabindex="-1">
+        <div class="panel-head"><span class="step">02</span><div><h2 id="result-heading">모델 결과</h2><p>6개 평가 항목과 음성 전사를 확인합니다.</p></div></div>
+        <div id="empty" class="empty"><div class="chart-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M4 4v16h16M8 16v-3m4 3V9m4 7V6"/></svg></div><strong id="empty-title">분석 결과가 여기에 표시됩니다</strong><p id="empty-caption">답변 영상을 추가한 뒤 분석을 실행해 주세요.</p><button class="text-button" id="example" type="button">예시 결과 보기 <span aria-hidden="true">↗</span></button></div>
+        <div id="result" hidden>
+          <div class="result-meta"><span class="result-tag" id="result-type"></span><span id="elapsed"></span></div>
+          <p id="warning" class="warning" hidden></p>
+          <div id="scores" class="scores"></div>
+          <div id="score-note" class="note">백분위는 모델이 예측한 상대적 위치입니다.</div>
+          <section class="transcript"><h3>음성 전사</h3><p id="transcript"></p></section>
+          <div class="result-actions"><button type="button" id="download">결과 JSON 저장</button><button type="button" id="clear-example" hidden>예시 닫기</button></div>
+        </div>
+      </section>
+    </div>
+    <div id="status" class="sr-only" role="status" aria-live="polite"></div>
+    <footer><span>RecruitView / Model Lab</span><span id="connection">모델 연결 설정 확인 중</span></footer>
+  </main>
+</body>
+</html>

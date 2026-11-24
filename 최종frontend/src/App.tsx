@@ -1,11 +1,14 @@
+import { FeedbackResults } from "./FeedbackResults"
+import SavedFeedbackPreview from "./SavedFeedbackPreview"
+import { previewSession, previewResult } from "./feedbackPreview"
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode, type CSSProperties } from "react"
-import { createInterview, uploadAnswer, answerVideoUrl, analyzeInterview, transcribeInterview, type InterviewTranscripts, scoreMetrics, interviewCategories, type InterviewResult, type ModelScores, type InterviewQuestion, type InterviewSession, type SubmittedAnswer } from "./interviewApi"
+import { createInterview, uploadAnswer, answerVideoUrl, analyzeInterview, fetchFeedback, type VideoResult, type ModelScore, transcribeInterview, type InterviewTranscripts, scoreMetrics, interviewCategories, type InterviewResult, type ModelScores, type InterviewQuestion, type InterviewSession, type SubmittedAnswer } from "./interviewApi"
 import { createAnswerRecorder, type Recording } from "./answerRecorder"
 import { useInterviewDevices, type InterviewDevices } from "./useInterviewDevices"
 import { CameraPreview, MicrophoneLevel, RecordedPreview } from "./DevicePreview"
 import { createQuestionNarration, type NarrationState } from "./questionNarration"
 
-type Screen = "home" | "guide" | "interview" | "review" | "analysis" | "results"
+type Screen = "home" | "guide" | "interview" | "analysis"
 type RecordingState = "ready" | "recording" | "processing" | "review"
 type IconName = "arrow" | "camera" | "check" | "chevron" | "clock" | "exit" | "mic" | "pause" | "play" | "refresh" | "shield" | "spark" | "volume" | "volumeOff"
 
@@ -335,6 +338,8 @@ function Guide({
               카운트다운은 취소할 수 있고, ‘녹화 시작’을 눌러 직접 시작할 수도 있어요.
               녹화가 시작되면 영상·음성이 녹화되고,
               ‘이 답변 제출하기’를 누르면 서버에 저장됩니다.
+              5개 답변을 모두 제출하면 분석이 자동으로 시작돼요. 기다리는 동안
+              영상과 답변 텍스트를 확인하고, 준비된 결과는 결과 확인 탭에서 볼 수 있어요.
             </p>
           </div>
         </section>
@@ -412,7 +417,7 @@ function Guide({
             </span>
             <p>
               카메라·마이크를 이용한 면접 진행에 동의합니다.
-              <small>녹화한 영상·음성을 답변 제출 시 서버에 저장하는 데 동의합니다.</small>
+              <small>녹화한 영상·음성을 답변 제출 시 서버에 저장하고, 분석 시 답변 텍스트·측정 통계를 Gemini에 전달하는 데 동의합니다.</small>
             </p>
           </label>
 
@@ -845,8 +850,13 @@ export function Interview({
   )
 }
 
-export function AnswerReview({ session, answers, onAnalyze }: { session: InterviewSession; answers: SubmittedAnswer[]; onAnalyze?: () => void }) {
-  const [selected, setSelected] = useState(0)
+export function AnswerReview({ session, answers, onAnalyze, embedded = false, active = true, selectedQuestion, onSelectQuestion }: {
+  session: InterviewSession; answers: SubmittedAnswer[]; onAnalyze?: () => void
+  embedded?: boolean; active?: boolean; selectedQuestion?: number; onSelectQuestion?: (index: number) => void
+}) {
+  const [localSelected, setLocalSelected] = useState(0)
+  const selected = selectedQuestion ?? localSelected
+  const setSelected = onSelectQuestion ?? setLocalSelected
   const [isPlaying, setIsPlaying] = useState(false)
   const [isMuted, setIsMuted] = useState(false)
   const [progress, setProgress] = useState(0)
@@ -860,9 +870,18 @@ export function AnswerReview({ session, answers, onAnalyze }: { session: Intervi
   const duration = answers.find((answer) => answer.questionId === item.id)?.duration ?? 0
   const videoUrl = answerVideoUrl(session.id, item.id)
   const formatTime = (value: number) => `${String(Math.floor(value / 60)).padStart(2, "0")}:${String(Math.floor(value % 60)).padStart(2, "0")}`
+  const Container = embedded ? "section" : "main"
+
+  useEffect(() => {
+    if (!active) videoRef.current?.pause()
+  }, [active])
 
   useEffect(() => {
     const video = videoRef.current
+    setIsPlaying(false)
+    setProgress(0)
+    setVideoError("")
+    setLoaded(false)
     return () => { video?.pause() }
   }, [selected])
 
@@ -904,8 +923,8 @@ export function AnswerReview({ session, answers, onAnalyze }: { session: Intervi
   }
 
   return (
-    <main className="review-page page-shell">
-      <header className="app-header">
+    <Container className={embedded ? "analysis-video-review" : "review-page page-shell"}>
+      {!embedded && <><header className="app-header">
         <Brand compact />
         <SimulationBadge>답변 확인</SimulationBadge>
       </header>
@@ -914,7 +933,7 @@ export function AnswerReview({ session, answers, onAnalyze }: { session: Intervi
         <span className="step-label">ANSWER REVIEW</span>
         <h1>제출한 답변을 확인해 보세요</h1>
         <p>5개 질문과 답변 영상을 확인한 뒤 분석을 시작해 주세요.</p>
-      </div>
+      </div></>}
 
       <div className="review-layout">
         <section className="review-viewer card">
@@ -1030,7 +1049,7 @@ export function AnswerReview({ session, answers, onAnalyze }: { session: Intervi
         </aside>
       </div>
 
-      <div className="review-footer">
+      {!embedded && <div className="review-footer">
         <div>
           <span className="review-footer__check">
             <Icon name="check" size={16} />
@@ -1044,109 +1063,81 @@ export function AnswerReview({ session, answers, onAnalyze }: { session: Intervi
           분석 시작하기
           <Icon name="arrow" />
         </Button>
+      </div>}
+    </Container>
+  )
+}
+
+export function Analysis({ error, onRetry, session, transcripts, answers = [], result = null, feedbackLoading = false, feedbackError = "", onFeedbackRetry }: {
+  error: string; onRetry: () => void
+  session: InterviewSession; transcripts: InterviewTranscripts | null; answers?: SubmittedAnswer[]
+  result?: InterviewResult | null; feedbackLoading?: boolean; feedbackError?: string; onFeedbackRetry?: () => void
+}) {
+  const [selected, setSelected] = useState(0)
+  const [tab, setTab] = useState<"videos" | "texts" | "results">("videos")
+  const tabRefs = useRef<(HTMLButtonElement | null)[]>([])
+  const tabs = [
+    { id: "videos", label: "답변 영상 확인", icon: "camera", ready: true },
+    { id: "texts", label: "답변 텍스트 확인", icon: "mic", ready: !!transcripts },
+    { id: "results", label: "결과 확인", icon: "spark", ready: !!result },
+  ] as const
+  const item = session.questions[selected]
+  const text = transcripts?.answers.find(answer => answer.question_id === item.id)?.transcript ?? ""
+  const status = error ? "분석을 완료하지 못했어요. 저장된 답변은 계속 확인할 수 있어요."
+    : result ? (feedbackLoading ? "영상 분석이 완료됐어요. AI 피드백을 작성하고 있어요." : "분석이 완료됐어요. 결과 확인 탭에서 확인해 주세요.")
+    : transcripts ? "텍스트 변환이 완료됐어요. 영상을 분석하고 있어요."
+    : "답변을 텍스트로 변환하고 있어요. 기다리는 동안 영상을 확인해 보세요."
+  return (
+    <main className="analysis-page analysis-wait-page page-shell">
+      <header className="app-header"><Brand compact /><SimulationBadge>답변 및 결과 확인</SimulationBadge></header>
+      <section className="analysis-wait-heading">
+        <span className="step-label">INTERVIEW ANALYSIS</span>
+        <h1>답변을 확인하는 동안 분석을 진행할게요</h1>
+        <p>탭을 눌러 제출한 영상과 답변 텍스트, 분석 결과를 자유롭게 확인해 보세요.</p>
+      </section>
+      <div className={`analysis-status${error ? " analysis-status--error" : ""}`} role="status" aria-live="polite" aria-atomic="true">
+        {!error && !result ? <span className="analysis-spinner" aria-hidden="true" /> : <Icon name={error ? "refresh" : "check"} size={18} />}
+        <p>{status}</p>
+      </div>
+      <div className="analysis-tabs" role="tablist" aria-label="답변과 결과 확인">
+        {tabs.map((item, index) => <button key={item.id} id={`analysis-tab-${item.id}`} type="button" role="tab"
+          ref={element => { tabRefs.current[index] = element }}
+          aria-selected={tab === item.id} aria-controls={`analysis-panel-${item.id}`} tabIndex={tab === item.id ? 0 : -1}
+          onClick={() => setTab(item.id)} onKeyDown={event => {
+            const target = event.key === "ArrowRight" ? (index + 1) % tabs.length
+              : event.key === "ArrowLeft" ? (index + tabs.length - 1) % tabs.length
+              : event.key === "Home" ? 0 : event.key === "End" ? tabs.length - 1 : -1
+            if (target < 0) return
+            event.preventDefault(); setTab(tabs[target].id); tabRefs.current[target]?.focus()
+          }}><Icon name={item.icon} size={18} /><span>{item.label}</span><small>{item.ready ? "확인 가능" : "준비 중"}</small></button>)}
+      </div>
+      {transcripts?.is_dummy && <div className="demo-notice"><Icon name="spark" /><p>화면 확인용 테스트 답변입니다. 실제 STT 결과가 아니에요.</p></div>}
+      {error && <div className="analysis-error card"><p role="alert">{error}</p><div className="analysis-actions"><Button onClick={onRetry}>분석 다시 요청하기</Button></div></div>}
+      <div id="analysis-panel-videos" role="tabpanel" aria-labelledby="analysis-tab-videos" hidden={tab !== "videos"} tabIndex={0}>
+        <AnswerReview session={session} answers={answers} embedded active={tab === "videos"} selectedQuestion={selected} onSelectQuestion={setSelected} />
+      </div>
+      <div id="analysis-panel-texts" role="tabpanel" aria-labelledby="analysis-tab-texts" hidden={tab !== "texts"} tabIndex={0}>
+        {transcripts ? <div className="analysis-transcript-layout">
+          <section className="card analysis-transcript-viewer" aria-label="질문별 답변 텍스트">
+            <span className="section-kicker">QUESTION {String(selected + 1).padStart(2, "0")} · {item.category}</span>
+            <h2>{item.question}</h2>
+            <section className="answer-transcript"><h3>내 답변 텍스트</h3><p lang={text.trim() ? "en" : "ko"}>{text.trim() ? text : "인식된 답변 텍스트가 없어요."}</p><small>음성을 자동으로 옮긴 텍스트로, 실제 발화와 다를 수 있어요.</small></section>
+          </section>
+          <aside className="card analysis-transcript-list" aria-label="확인할 답변 선택">
+            <h2>제출한 답변 <small>{session.questions.length} / {session.questions.length}</small></h2>
+            {session.questions.map((question, index) => <button key={question.id} type="button" aria-current={selected === index ? "true" : undefined} onClick={() => setSelected(index)}><span>{String(index + 1).padStart(2, "0")}</span><div><small>{question.category}</small><strong>{question.question}</strong></div><Icon name="chevron" size={16} /></button>)}
+          </aside>
+        </div> : <section className="card analysis-stt-wait"><Icon name="mic" size={28} /><h2>{error ? "답변 텍스트를 준비하지 못했어요" : "답변 텍스트를 준비하고 있어요"}</h2><p>{error ? "분석을 다시 요청하거나 영상 확인 탭에서 제출한 답변을 확인해 주세요." : "텍스트 변환이 완료되면 이곳에서 질문별 답변을 확인할 수 있어요."}</p></section>}
+      </div>
+      <div id="analysis-panel-results" role="tabpanel" aria-labelledby="analysis-tab-results" hidden={tab !== "results"} tabIndex={0}>
+        {result ? <Results result={result} session={session} embedded feedbackLoading={feedbackLoading} feedbackError={feedbackError} onFeedbackRetry={onFeedbackRetry} />
+          : <section className="card analysis-stt-wait"><Icon name="spark" size={28} /><h2>{error ? "분석 결과를 준비하지 못했어요" : "아직 분석 결과를 준비하고 있어요"}</h2><p>{error ? "저장된 답변은 유지돼요. 위의 버튼으로 분석을 다시 요청해 주세요." : "분석이 완료되면 이 탭에서 결과를 확인할 수 있어요. 기다리는 동안 영상과 텍스트를 살펴보세요."}</p></section>}
       </div>
     </main>
   )
 }
 
-export function Analysis({ error, onRetry, onBack, session, transcripts }: {
-  error: string; onRetry: () => void; onBack: () => void
-  session: InterviewSession; transcripts: InterviewTranscripts | null
-}) {
-  const [selected, setSelected] = useState(0)
-  const item = session.questions[selected]
-  const text = transcripts?.answers.find(answer => answer.question_id === item.id)?.transcript ?? ""
-  return (
-    <main className="analysis-page analysis-wait-page page-shell">
-      <header className="app-header"><Brand compact /><SimulationBadge>답변 분석</SimulationBadge></header>
-      <section className="analysis-wait-heading">
-        <span className="step-label">INTERVIEW ANALYSIS</span>
-        <h1>{error ? "분석을 완료하지 못했어요" : transcripts ? "답변을 확인하는 동안 평가를 진행할게요" : "답변을 텍스트로 변환하고 있어요"}</h1>
-        <p role="status">{error ? "저장된 답변 영상은 유지돼요. 잠시 후 다시 요청해 주세요." : transcripts ? "질문별 답변 내용을 살펴보세요. 평가가 끝나면 결과 화면으로 이동해요." : "5개 답변의 음성을 차례로 정리하고 있어요. 준비되면 이곳에서 확인할 수 있어요."}</p>
-      </section>
-      <ol className="analysis-stage-list" aria-label="분석 진행 단계">
-        <li className={transcripts ? "is-complete" : "is-current"} aria-current={!transcripts ? "step" : undefined}><Icon name={transcripts ? "check" : "mic"} size={17} /><span>답변 텍스트 변환</span></li>
-        <li className={transcripts ? "is-current" : ""} aria-current={transcripts ? "step" : undefined}><Icon name="spark" size={17} /><span>면접 평가</span></li>
-        <li><Icon name="check" size={17} /><span>결과 확인</span></li>
-      </ol>
-      {transcripts?.is_dummy && <div className="demo-notice"><Icon name="spark" /><p>화면 확인용 테스트 답변입니다. 실제 STT 결과가 아니에요.</p></div>}
-      {error && <div className="analysis-error card"><p role="alert">{error}</p><div className="analysis-actions"><Button onClick={onRetry}>분석 다시 요청하기</Button><Button onClick={onBack} variant="secondary">답변 확인으로 돌아가기</Button></div></div>}
-      {transcripts ? <div className="analysis-transcript-layout">
-        <section className="card analysis-transcript-viewer" aria-label="질문별 답변 텍스트">
-          <span className="section-kicker">QUESTION {String(selected + 1).padStart(2, "0")} · {item.category}</span>
-          <h2>{item.question}</h2>
-          <section className="answer-transcript"><h3>내 답변 텍스트</h3><p lang={text.trim() ? "en" : "ko"}>{text.trim() ? text : "인식된 답변 텍스트가 없어요."}</p><small>음성을 자동으로 옮긴 텍스트로, 실제 발화와 다를 수 있어요.</small></section>
-          {!error && <div className="analysis-ongoing" role="status"><span className="analysis-spinner" aria-hidden="true" />답변의 영상·음성·내용을 평가하고 있어요.</div>}
-        </section>
-        <aside className="card analysis-transcript-list" aria-label="확인할 답변 선택">
-          <h2>제출한 답변 <small>5 / 5</small></h2>
-          {session.questions.map((question, index) => <button key={question.id} type="button" aria-current={selected === index ? "true" : undefined} onClick={() => setSelected(index)}><span>{String(index + 1).padStart(2, "0")}</span><div><small>{question.category}</small><strong>{question.question}</strong></div><Icon name="chevron" size={16} /></button>)}
-        </aside>
-      </div> : !error && <section className="card analysis-stt-wait" role="status"><span className="analysis-spinner" aria-hidden="true" /><h2>답변 내용을 정리하고 있어요</h2><p>분석에는 몇 분이 걸릴 수 있어요.<br />텍스트가 준비되면 질문별로 보여드릴게요.</p></section>}
-    </main>
-  )
-}
-
-function PercentileBadge({ value }: { value: number | null }) {
-  return <span className="percentile-badge"><small>백분위</small><strong>{value === null ? "정보 없음" : value}</strong></span>
-}
-
-function PercentileMetrics({ scores }: { scores: ModelScores }) {
-  return <dl className="band-metrics">
-    {scoreMetrics.map(({ key, label }) => <div key={key}><dt>{label}</dt><dd><PercentileBadge value={scores[key].percentile} /></dd></div>)}
-  </dl>
-}
-
-export function Results({ result, session }: { result: InterviewResult; session: InterviewSession }) {
-  const overall = result.session.scores.overall_performance
-  return (
-    <main className="results-page page-shell">
-      <header className="app-header"><Brand compact /><SimulationBadge>{result.is_dummy ? "테스트 결과" : "면접 결과"}</SimulationBadge></header>
-      <section className="result-hero">
-        <div>
-          <span className="step-label">INTERVIEW REPORT</span>
-          <h1>면접 결과를 확인해 보세요</h1>
-          <p>전체 평가와 질문별 답변 내용을 한곳에서 살펴볼 수 있어요.</p>
-        </div>
-      </section>
-      {result.is_dummy && <div className="demo-notice" role="note"><Icon name="spark" size={18} /><p><strong>화면 확인용 테스트 결과입니다.</strong>아래 평가와 답변 텍스트는 실제 분석 결과가 아니에요.</p></div>}
-      <section className="card result-summary">
-        <div className="section-heading result-summary__heading"><div><span className="section-kicker">전체 요약</span><h2>면접 전체 평가</h2></div></div>
-        <div className="score-layout">
-          <div className="overall-band">
-            <span>종합 평가</span>
-            <div className="overall-percentile"><span>백분위</span><strong>{overall.percentile === null ? "정보 없음" : overall.percentile}</strong></div>
-          </div>
-          <PercentileMetrics scores={result.session.scores} />
-        </div>
-        <p className="band-note">백분위는 기준 집단 안에서의 상대적인 위치이며 100점 만점 점수가 아니에요.</p>
-      </section>
-      <section className="detail-section">
-        <div className="detail-section__heading"><div><span className="section-kicker">질문별 세부 결과</span><h2>답변을 하나씩 살펴보세요</h2></div><span>각 항목을 눌러 펼치기</span></div>
-        <div className="result-accordions">
-          {session.questions.map((question, index) => {
-            const video = result.videos.find((item) => item.question_id === question.id)!
-            return <details className="result-detail card" key={question.id} open={index === 0}>
-              <summary>
-                <span className="result-detail__number">{String(index + 1).padStart(2, "0")}</span>
-                <span className="result-detail__title"><small>{question.category}</small><strong>{question.question}</strong></span>
-                <span className="question-band"><small>종합 평가</small><PercentileBadge value={video.scores.overall_performance.percentile} /></span>
-                <span className="result-detail__chevron"><Icon name="chevron" size={17} /></span>
-              </summary>
-              <div className="result-detail__body">
-                <section className="answer-transcript"><h3>내 답변 텍스트</h3>
-                  <p className={video.transcript.trim() ? "" : "answer-transcript--empty"} lang={video.transcript.trim() ? "en" : "ko"}>{video.transcript.trim() ? video.transcript : "인식된 답변 텍스트가 없어요."}</p>
-                  <small>음성을 자동으로 옮긴 텍스트로, 실제 발화와 다를 수 있어요.</small>
-                </section>
-                <section className="answer-band-section"><h3>항목별 백분위</h3><PercentileMetrics scores={video.scores} /></section>
-              </div>
-            </details>
-          })}
-        </div>
-      </section>
-    </main>
-  )
-}
+export const Results = FeedbackResults
 
 export default function App() {
   const devices = useInterviewDevices()
@@ -1160,11 +1151,19 @@ export default function App() {
   const [analysisResult, setAnalysisResult] = useState<InterviewResult | null>(null)
   const [analysisError, setAnalysisError] = useState("")
   const [analysisTexts, setAnalysisTexts] = useState<InterviewTranscripts | null>(null)
+  const [feedbackLoading, setFeedbackLoading] = useState(false)
+  const [feedbackError, setFeedbackError] = useState("")
+  const feedbackRef = useRef<AbortController | null>(null)
+  useEffect(() => () => feedbackRef.current?.abort(), [])
   const requestRef = useRef<AbortController | null>(null)
 
   useEffect(() => () => requestRef.current?.abort(), [])
 
   const goHome = () => {
+    feedbackRef.current?.abort()
+    feedbackRef.current = null
+    setFeedbackLoading(false)
+    setFeedbackError("")
     devices.disconnect()
     const request = requestRef.current
     requestRef.current = null
@@ -1216,6 +1215,24 @@ export default function App() {
     }
   }
 
+  const loadFeedback = async () => {
+    if (!session || feedbackRef.current) return
+    const request = new AbortController()
+    feedbackRef.current = request
+    setFeedbackLoading(true)
+    setFeedbackError("")
+    const timeout = window.setTimeout(() => request.abort(), 360000)
+    try {
+      const result = await fetchFeedback(session, request.signal)
+      if (feedbackRef.current === request) setAnalysisResult(result)
+    } catch {
+      if (feedbackRef.current === request) setFeedbackError("AI 피드백을 완료하지 못했어요. 답변 텍스트는 계속 확인할 수 있어요.")
+    } finally {
+      window.clearTimeout(timeout)
+      if (feedbackRef.current === request) { feedbackRef.current = null; setFeedbackLoading(false) }
+    }
+  }
+
   const startAnalysis = async () => {
     if (!session || requestRef.current) return
     const request = new AbortController()
@@ -1233,7 +1250,7 @@ export default function App() {
       const result = await analyzeInterview(session, request.signal)
       if (requestRef.current !== request) return
       setAnalysisResult(result)
-      setScreen("results")
+      void loadFeedback()
     } catch (error) {
       if (requestRef.current !== request) return
       setAnalysisError(request.signal.aborted ? "분석 응답 시간이 초과됐어요. 잠시 후 다시 요청해 주세요."
@@ -1248,6 +1265,13 @@ export default function App() {
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: "smooth" })
   }, [screen])
+
+  if (import.meta.env.DEV && new URLSearchParams(window.location.search).get("preview") === "recorded-feedback") {
+    return <SavedFeedbackPreview sessionId={new URLSearchParams(window.location.search).get("session") || ""} />
+  }
+  if (import.meta.env.DEV && new URLSearchParams(window.location.search).get("preview") === "feedback") {
+    return <FeedbackResults result={previewResult} session={previewSession} />
+  }
 
   return (
     <>
@@ -1268,14 +1292,13 @@ export default function App() {
           questions={session.questions}
           devices={devices}
           onExit={goHome}
-          onFinish={(answers) => { devices.disconnect(); setSubmittedAnswers(answers); setScreen("review") }}
+          onFinish={(answers) => { devices.disconnect(); setSubmittedAnswers(answers); void startAnalysis() }}
         />
       )}
-      {screen === "review" && session && <AnswerReview session={session} answers={submittedAnswers} onAnalyze={startAnalysis} />}
       {screen === "analysis" && session && (
-        <Analysis session={session} transcripts={analysisTexts} error={analysisError} onRetry={startAnalysis} onBack={() => setScreen("review")} />
+        <Analysis key={session.id} session={session} answers={submittedAnswers} transcripts={analysisTexts} result={analysisResult}
+          error={analysisError} onRetry={startAnalysis} feedbackLoading={feedbackLoading} feedbackError={feedbackError} onFeedbackRetry={loadFeedback} />
       )}
-      {screen === "results" && session && analysisResult && <Results result={analysisResult} session={session} />}
     </>
   )
 }

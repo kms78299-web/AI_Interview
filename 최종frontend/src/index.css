@@ -1605,6 +1605,21 @@
 .percentile-badge { display: inline-flex; align-items: baseline; gap: 7px; padding: 5px 10px; border-radius: 9px; background: var(--accent); color: var(--primary); white-space: nowrap; }
 .percentile-badge small { font-size: 10px; font-weight: 400; }
 .percentile-badge strong { font-size: 18px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.percentile-with-range { display: grid; justify-items: end; gap: 5px; }
+.percentile-with-range > small { color: var(--muted); font-size: 10px; white-space: nowrap; }
+.feedback-notice { padding: 20px 0 0; color: var(--muted); font-size: 12px; line-height: 1.8; }
+.feedback-notice .button { margin-top: 10px; }
+.feedback-state { padding: 20px 0; color: var(--muted); font-size: 13px; }
+.gemini-feedback { margin-top: 24px; border-top: 1px solid var(--border); padding-top: 24px; }
+.feedback-ratings { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.feedback-ratings > div { border-radius: 12px; padding: 18px; background: var(--accent); }
+.gemini-feedback h3 { margin: 0 0 10px; font-size: 14px; }
+.feedback-ratings h3 > span { margin-left: 10px; color: var(--primary); font-size: 17px; }
+.gemini-feedback p { font-size: 13px; line-height: 1.9; white-space: pre-wrap; overflow-wrap: anywhere; }
+.feedback-ratings small { color: var(--muted); font-size: 10px; }
+.feedback-modality { padding-top: 24px; }
+.feedback-advice { margin-top: 24px; padding: 18px; border: 1px solid var(--border); border-radius: 12px; }
+@media (max-width: 600px) { .feedback-ratings { grid-template-columns: 1fr; } }
 .question-band { display: grid; justify-items: center; gap: 5px; }
 .question-band > small { color: var(--muted); font-size: 10px; }
 .answer-transcript { padding: 24px 0; }
@@ -1618,10 +1633,18 @@
 .analysis-wait-heading { padding: 38px 0 24px; }
 .analysis-wait-heading h1 { margin: 12px 0; font-size: clamp(24px, 3vw, 32px); line-height: 1.4; }
 .analysis-wait-heading p { color: var(--muted); font-size: 14px; line-height: 1.8; }
-.analysis-stage-list { display: flex; gap: 10px; padding: 0; margin: 0 0 24px; list-style: none; }
-.analysis-stage-list li { display: flex; align-items: center; justify-content: center; gap: 8px; flex: 1; padding: 14px 10px; border: 1px solid var(--border); border-radius: 12px; color: var(--muted); font-size: 13px; }
-.analysis-stage-list .is-current { background: var(--accent); border-color: var(--primary); color: var(--primary); font-weight: 700; }
-.analysis-stage-list .is-complete { background: var(--surface); color: var(--primary); }
+.analysis-status { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; padding: 16px 18px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); color: var(--primary); }
+.analysis-status p { margin: 0; font-size: 13px; line-height: 1.7; }
+.analysis-status > svg { flex-shrink: 0; }
+.analysis-status--error { color: #a03b47; }
+.analysis-tabs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-bottom: 24px; }
+.analysis-tabs button { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 8px; min-height: 68px; padding: 14px 10px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); color: var(--muted); font-size: 13px; cursor: pointer; }
+.analysis-tabs button:hover { border-color: var(--primary); color: var(--primary); }
+.analysis-tabs button[aria-selected="true"] { background: var(--accent); border-color: var(--primary); color: var(--primary); font-weight: 700; }
+.analysis-tabs button small { font-size: 10px; font-weight: 400; }
+.analysis-tabs button:focus-visible, [id^="analysis-panel-"]:focus-visible { outline: 2px solid var(--primary); outline-offset: 4px; }
+[id^="analysis-panel-"][hidden] { display: none; }
+.analysis-results .result-summary { margin-top: 0; }
 .analysis-transcript-layout { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(260px, 1fr); gap: 22px; align-items: start; margin-top: 20px; }
 .analysis-transcript-viewer { min-width: 0; padding: 28px; }
 .analysis-transcript-viewer > h2 { margin: 12px 0 0; font-family: Georgia, serif; font-size: 25px; font-weight: 500; line-height: 1.5; overflow-wrap: anywhere; text-align: left; }
@@ -1647,8 +1670,8 @@
 @media (max-width: 760px) {
   .analysis-transcript-layout { grid-template-columns: minmax(0, 1fr); }
   .analysis-transcript-viewer { padding: 20px; }
-  .analysis-stage-list { gap: 6px; }
-  .analysis-stage-list li { flex-direction: column; font-size: 11px; padding: 12px 5px; }
+  .analysis-tabs { gap: 6px; }
+  .analysis-tabs button { flex-direction: column; gap: 6px; font-size: 11px; padding: 12px 5px; }
 }
 
 @media (max-width: 600px) {

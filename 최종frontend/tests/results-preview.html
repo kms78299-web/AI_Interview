@@ -12,9 +12,12 @@ import '/src/index.css'
 const texts = ['Tell me about yourself.', 'What motivates you to do your best work?', 'Tell me about a time you worked through a team conflict.', 'Describe a difficult problem you solved.', 'How do you adapt when priorities suddenly change?']
 const session = { id: 'ui-preview', questions: texts.map((question, i) => ({ id: `q${i+1}`, question, category: interviewCategories[i].category, order: i+1 })) }
 const bands = ['상', '중', '중', '상', '하', '중']
-const scores = (empty=false) => Object.fromEntries(scoreMetrics.map(({key}, i) => [key, { band: empty ? null : bands[i], percentile: empty ? null : 44 + i * 6 }]))
+const scores = (empty=false) => Object.fromEntries(scoreMetrics.map(({key}, i) => [key, { band: empty ? null : bands[i], percentile: empty ? null : 44 + i * 6, percentile_low:empty?null:20+i*3, percentile_high:empty?null:80+i*3 }]))
 const transcript = "I am a computer science student interested in building useful services.\nIn our capstone project, I worked with my team to develop an English interview practice service. I enjoy solving problems together and learning from feedback."
 const result = { session_id: session.id, is_dummy: true, session: { scores: scores() }, videos: session.questions.map((q,i) => ({ question_id:q.id, scores:scores(i===4), transcript:i===4 ? '' : `Question ${i+1} — Sample answer.\n${transcript}` })) }
+const feedback={content_rating:'적절',content_reason:'질문에 맞게 경험과 관심 분야를 설명했어요.',overall_band:'중',band_reason:'핵심은 전달했지만 구체적인 성과를 더 설명하면 좋아요.',text:{strength:'관심 분야와 팀 프로젝트 경험을 연결했어요.',improvement:'본인이 맡은 역할과 결과를 한 가지씩 추가해 보세요.'},audio:{strength:'답변의 흐름을 차분하게 유지했어요.',improvement:'문장 사이에서 짧게 호흡하며 핵심 단어를 강조해 보세요.'},video:{strength:'면접 상황에 맞는 자세를 유지했어요.',improvement:'중요한 내용을 말할 때 카메라를 바라보세요.'},summary:'경험을 소개한 뒤 본인의 역할과 결과를 덧붙이면 더 명확해져요.'}
+result.videos.forEach((video,i)=>{video.feedback=i<3?feedback:null;video.feedback_status=i<3?'ready':i===3?'error':'skipped';video.feedback_error=i===3?'Gemini 요청을 완료하지 못했어요. 다시 요청해 주세요.':i===4?'측정 통계가 준비되지 않아 피드백을 생성하지 못했어요.':null})
+result.videos[4].scores=null;result.videos[4].skipped=true;result.videos[4].warning='답변이 너무 짧아 예측 위치를 제공하지 않아요.'
 createRoot(document.querySelector('#root')).render(React.createElement(Results, { session, result }))
 </script>
 </html>

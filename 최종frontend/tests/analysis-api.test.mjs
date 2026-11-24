@@ -5,7 +5,7 @@ import ts from 'typescript'
 
 const source = await readFile(new URL('../src/interviewApi.ts', import.meta.url), 'utf8')
 const { outputText } = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.ESNext } })
-const { analyzeInterview, transcribeInterview, scoreMetrics } = await import(`data:text/javascript;base64,${Buffer.from(outputText).toString('base64')}`)
+const { analyzeInterview, transcribeInterview, fetchFeedback, scoreMetrics } = await import(`data:text/javascript;base64,${Buffer.from(outputText).toString('base64')}`)
 const session = { id: 'a'.repeat(32), questions: Array.from({ length: 5 }, (_, i) => ({ id: `q${i + 1}` })) }
 const scores = () => Object.fromEntries(scoreMetrics.map(({ key }) => [key, { raw: -0.12, percentile: 56, percentile_low: 20, percentile_high: 85, band: '중' }]))
 const fixture = () => ({ status: 'success', session_id: session.id, is_dummy: false,
@@ -84,4 +84,14 @@ test('STT의 질문 불일치와 서버 오류를 정상 텍스트로 처리하�
   await assert.rejects(transcribeInterview(session, new AbortController().signal), /맞지 않거나/)
   globalThis.fetch.mock.mockImplementation(async () => Response.json({detail:'STT 서버 연결 필요'}, {status:503}))
   await assert.rejects(transcribeInterview(session, new AbortController().signal), /STT 서버 연결 필요/)
+})
+
+test('점수가 없는 짧은 답변과 JSON 피드백을 함께 받을 수 있다', async t => {
+  const body=fixture();body.session.scores=null
+  const feedback={content_rating:'부분적',content_reason:'내용 이유',overall_band:'중',band_reason:'종합 이유',summary:'조언',text:{strength:'강점',improvement:'개선'},audio:{strength:'강점',improvement:'개선'},video:{strength:'강점',improvement:'개선'}}
+  body.videos.forEach(video=>Object.assign(video,{scores:null,skipped:true,warning:'답변이 짧아요',feedback,feedback_status:'ready'}))
+  t.mock.method(globalThis,'fetch',async(url)=>{assert.equal(url,`/api/interviews/${session.id}/feedback`);return Response.json(body)})
+  assert.deepEqual(await fetchFeedback(session,new AbortController().signal),body)
+  body.videos[0].feedback={...feedback,audio:null}
+  await assert.rejects(fetchFeedback(session,new AbortController().signal),/누락/)
 })

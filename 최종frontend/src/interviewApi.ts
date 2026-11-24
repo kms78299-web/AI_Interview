@@ -27,16 +27,33 @@ export const scoreMetrics = [
   { key: "speaking_skills", label: "말하기 능력" },
   { key: "confidence_score", label: "자신감" },
   { key: "facial_expression", label: "표정" },
-  { key: "overall_performance", label: "종합 평가" },
+  { key: "overall_performance", label: "종합 예측" },
 ] as const
 
-export type ModelScore = { band: string | null; percentile: number | null }
+export type ModelScore = { band: string | null; percentile: number | null; percentile_low?: number | null; percentile_high?: number | null }
 export type ModelScores = Record<typeof scoreMetrics[number]["key"], ModelScore>
+export type Feedback = {
+  content_rating: "적절" | "부분적" | "부적절"
+  content_reason: string
+  overall_band: "상" | "중" | "하"
+  band_reason: string
+  text: { strength: string; improvement: string }
+  audio: { strength: string; improvement: string }
+  video: { strength: string; improvement: string }
+  summary: string
+}
+export type VideoResult = {
+  question_id: string; transcript: string; scores: ModelScores | null
+  skipped?: boolean; warning?: string
+  feedback?: Feedback | null; feedback_status?: "ready" | "error" | "skipped"
+  feedback_error?: string | null
+}
 export type InterviewResult = {
+  feedback_v1?: unknown
   session_id: string
   is_dummy: boolean
-  session: { scores: ModelScores }
-  videos: { question_id: string; transcript: string; scores: ModelScores }[]
+  session: { scores: ModelScores | null }
+  videos: VideoResult[]
 }
 
 export type InterviewTranscripts = {
@@ -66,7 +83,40 @@ function isScores(value: unknown): value is ModelScores {
     return isObject(score) && (score.band === null || typeof score.band === "string")
       && (score.percentile === null || (typeof score.percentile === "number"
         && Number.isFinite(score.percentile) && score.percentile >= 0 && score.percentile <= 100))
+      && ["percentile_low", "percentile_high"].every(field => score[field] === undefined || score[field] === null
+        || (typeof score[field] === "number" && Number.isFinite(score[field]) && score[field] >= 0 && score[field] <= 100))
   })
+}
+
+function isFeedback(value: unknown): value is Feedback {
+  return isObject(value) && ["적절", "부분적", "부적절"].includes(String(value.content_rating))
+    && ["상", "중", "하"].includes(String(value.overall_band))
+    && ["content_reason", "band_reason", "summary"].every(key => typeof value[key] === "string" && String(value[key]).trim())
+    && ["text", "audio", "video"].every(key => {
+      const section = value[key]
+      return isObject(section) && ["strength", "improvement"].every(field => typeof section[field] === "string" && String(section[field]).trim())
+    })
+}
+
+function readResult(body: unknown, session: InterviewSession): InterviewResult {
+  if (!isObject(body) || body.status !== "success" || body.session_id !== session.id
+    || typeof body.is_dummy !== "boolean" || !isObject(body.session)
+    || (body.session.scores !== null && !isScores(body.session.scores)) || !Array.isArray(body.videos)
+    || body.videos.length !== session.questions.length
+    || !body.videos.every((video: unknown, index: number) => isObject(video)
+      && video.question_id === session.questions[index].id && typeof video.transcript === "string"
+      && (isScores(video.scores) || (video.scores === null && video.skipped === true && typeof video.warning === "string"))
+      && (video.feedback == null || isFeedback(video.feedback)))) {
+    throw new Error("분석 결과와 제출한 질문이 맞지 않거나 결과가 누락됐어요. 다시 시도해 주세요.")
+  }
+  return body as InterviewResult
+}
+
+export async function fetchFeedback(session: InterviewSession, signal: AbortSignal): Promise<InterviewResult> {
+  const response = await fetch(`/api/interviews/${encodeURIComponent(session.id)}/feedback`, { method: "POST", signal })
+  const body: unknown = await response.json().catch(() => null)
+  if (!response.ok) throw new Error("피드백을 불러오지 못했어요. 답변은 유지되니 잠시 후 다시 요청해 주세요.")
+  return readResult(body, session)
 }
 
 export async function analyzeInterview(session: InterviewSession, signal: AbortSignal): Promise<InterviewResult> {
@@ -76,16 +126,7 @@ export async function analyzeInterview(session: InterviewSession, signal: AbortS
   const body: unknown = await response.json().catch(() => null)
   if (!response.ok) throw new Error(isObject(body) && typeof body.detail === "string"
     ? body.detail : "답변을 분석하지 못했어요. 잠시 후 다시 시도해 주세요.")
-  if (!isObject(body) || body.status !== "success" || body.session_id !== session.id
-    || typeof body.is_dummy !== "boolean" || !isObject(body.session)
-    || !isScores(body.session.scores) || !Array.isArray(body.videos)
-    || body.videos.length !== session.questions.length
-    || !body.videos.every((video: unknown, index: number) => isObject(video)
-      && video.question_id === session.questions[index].id
-      && typeof video.transcript === "string" && isScores(video.scores))) {
-    throw new Error("분석 결과와 제출한 질문이 맞지 않거나 결과가 누락됐어요. 다시 시도해 주세요.")
-  }
-  return body as InterviewResult
+  return readResult(body, session)
 }
 
 export function answerVideoUrl(sessionId: string, questionId: string) {

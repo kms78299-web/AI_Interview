@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="ko">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>저장된 면접 결과 확인</title>
+<div id="root"><p style="padding:24px">저장된 결과를 불러오고 있어요…</p></div>
+<script type="module">
+import React from 'react'
+import { createRoot } from 'react-dom/client'
+import { Results } from '/src/App.tsx'
+import { interviewCategories } from '/src/interviewApi.ts'
+import '/src/index.css'
+
+// 개발 중 기존 녹화 세션의 실제 결과를 확인합니다. 분석/API 과금 요청은 하지 않습니다.
+const root = createRoot(document.querySelector('#root'))
+const id = new URLSearchParams(location.search).get('session') || ''
+async function load() {
+  try {
+    if (!/^[a-f0-9]{32}$/.test(id)) throw new Error('올바른 면접 세션 주소가 필요해요.')
+    const response = await fetch(`/api/interviews/${id}/result`, { cache: 'no-store' })
+    const result = await response.json()
+    if (!response.ok || result.session_id !== id || !Array.isArray(result.videos)) throw new Error('저장된 결과를 불러오지 못했어요.')
+    const session = { id, questions: result.videos.map((video, index) => ({
+      id: video.question_id, question: video.question, order: index + 1,
+      categoryId: video.category,
+      category: interviewCategories.find(item => item.id === video.category)?.category || video.category,
+    })) }
+    root.render(React.createElement(React.Fragment, null,
+      React.createElement('div', { style: { padding: '12px 24px', textAlign: 'right' } },
+        React.createElement('button', { type: 'button', onClick: load }, '저장된 결과 새로 불러오기')),
+      React.createElement(Results, { session, result })))
+  } catch (error) {
+    root.render(React.createElement('p', { style: { padding: 24 }, role: 'alert' }, error.message))
+  }
+}
+load()
+</script>
+</html>
