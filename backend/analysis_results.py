@@ -57,8 +57,11 @@ def validate_analysis_result(result):
     if "is_dummy" in result and type(result["is_dummy"]) is not bool:
         raise ValueError("is_dummy: true 또는 false가 필요합니다.")
     session = result.get("session")
-    if not isinstance(session, dict) or type(session.get("n_videos")) is not int or session["n_videos"] != 5:
-        raise ValueError("session.n_videos: 5가 필요합니다.")
+    if not isinstance(session, dict) or type(session.get("n_videos")) is not int or not 0 <= session["n_videos"] <= 5:
+        raise ValueError("session.n_videos: 평가된 영상 수 0~5가 필요합니다.")
+    n_skipped = session.get("n_skipped", 0)
+    if type(n_skipped) is not int or not 0 <= n_skipped <= 5:
+        raise ValueError("session.n_skipped: 평가 제외 영상 수 0~5가 필요합니다.")
     smoothing = session.get("smoothing")
     if "smoothing" not in session or (
         smoothing is not None and (
@@ -66,7 +69,10 @@ def validate_analysis_result(result):
         )
     ):
         raise ValueError("session.smoothing: 0~1 또는 null이 필요합니다.")
-    validate_scores(session.get("scores"), "session.scores")
+    if session.get("scores") is not None:
+        validate_scores(session.get("scores"), "session.scores")
+    elif session.get("n_skipped") != 5:
+        raise ValueError("session.scores: 모든 답변이 평가 제외된 경우에만 null을 허용합니다.")
     videos = result.get("videos")
     if not isinstance(videos, list) or len(videos) != 5:
         raise ValueError("videos: 질문 순서의 영상별 결과 5개가 필요합니다.")
@@ -74,20 +80,32 @@ def validate_analysis_result(result):
         location = f"videos[{index}]"
         if not isinstance(video, dict) or not isinstance(video.get("video"), str) or not video["video"].strip():
             raise ValueError(f"{location}.video: 영상 파일 경로가 필요합니다.")
-        validate_scores(video.get("scores"), f"{location}.scores")
+        if video.get("scores") is None:
+            if video.get("skipped") is not True or not isinstance(video.get("warning"), str) or not video["warning"].strip():
+                raise ValueError(f"{location}: 점수가 없으면 평가 제외 사유가 필요합니다.")
+        else:
+            if video.get("skipped") is True:
+                raise ValueError(f"{location}: 평가 제외 영상에는 점수가 없어야 합니다.")
+            validate_scores(video.get("scores"), f"{location}.scores")
         if not isinstance(video.get("transcript"), str):
             raise ValueError(f"{location}.transcript: 문자열이 필요합니다.")
         if video.get("stats") is not None and not isinstance(video["stats"], dict):
             raise ValueError(f"{location}.stats: 통계 객체 또는 null이 필요합니다.")
         if video.get("llm_prompt") is not None and not isinstance(video["llm_prompt"], str):
             raise ValueError(f"{location}.llm_prompt: 문자열 또는 null이 필요합니다.")
-        if "single_clip_percentile" in video:
+        if "single_clip_percentile" in video and not (
+            video.get("skipped") is True and video["single_clip_percentile"] is None
+        ):
             percentiles = video["single_clip_percentile"]
             if not isinstance(percentiles, dict) or set(percentiles) != set(SCORE_NAMES):
                 raise ValueError(f"{location}.single_clip_percentile: 6개 항목이 필요합니다.")
             for value in percentiles.values():
                 if value is not None and (type(value) not in (int, float) or not math.isfinite(value) or not 0 <= value <= 100):
                     raise ValueError(f"{location}.single_clip_percentile: 0~100 또는 null이 필요합니다.")
+    # The model counts evaluated clips in n_videos; skipped clips remain in videos.
+    actual_skipped = sum(video.get("skipped") is True for video in videos)
+    if n_skipped != actual_skipped or session["n_videos"] != len(videos) - actual_skipped:
+        raise ValueError("session.n_videos/n_skipped: 영상별 평가·제외 개수와 일치해야 합니다.")
     if not isinstance(result.get("explanation"), str):
         raise ValueError("explanation: 문자열이 필요합니다.")
     try:
@@ -114,7 +132,7 @@ def prepare_analysis_result(model_result, video_paths):
         "video_count": len(answers),
         # These are aliases of the model's session scores, never recalculated means.
         "average_scores": copy.deepcopy(result["session"]["scores"]),
-        "overall_score": copy.deepcopy(result["session"]["scores"]["overall_performance"]),
+        "overall_score": copy.deepcopy(result["session"]["scores"]["overall_performance"]) if result["session"]["scores"] else None,
         "answers": answers,
         "combined_transcript": "\n\n".join(
             f"질문 {answer['question_index']}: {answer['transcript']}" for answer in answers

@@ -1,23 +1,73 @@
 <!doctype html>
 <html lang="ko">
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>분석 대기 화면 · 테스트 미리보기</title>
-<div style="padding:10px;font:12px system-ui;background:#eeeaf4">화면 확인용 테스트 · 모델 실행 없음 <button id="stt">텍스트 변환 중</button> <button id="texts">텍스트 준비 완료</button> <button id="error">평가 실패</button></div>
+<div style="padding:10px;font:12px system-ui;background:#eeeaf4;display:flex;flex-wrap:wrap;gap:12px;align-items:center">화면 확인용 테스트 · 모델 실행 없음 <button id="stt">텍스트 변환 중</button> <button id="texts">텍스트 준비 완료</button> <button id="complete">분석 완료</button> <button id="feedback">피드백 작성 중</button> <button id="error">평가 실패</button> <button id="checks">탭 동작 검증</button><output id="check-result"></output></div>
 <div id="root"></div>
 <script type="module">
 import React from 'react'
 import {createRoot} from 'react-dom/client'
 import {Analysis} from '/src/App.tsx'
-import {interviewCategories} from '/src/interviewApi.ts'
+import {interviewCategories, scoreMetrics} from '/src/interviewApi.ts'
 import '/src/index.css'
 const questions=['Tell me about yourself.','What motivates you to do your best work?','Tell me about a time you worked through a team conflict.','Describe a difficult problem you solved.','How do you adapt when priorities suddenly change?']
-const session={id:'analysis-preview',questions:questions.map((question,i)=>({id:`q${i+1}`,question,category:interviewCategories[i].category,order:i+1}))}
+let session={id:'analysis-preview',questions:questions.map((question,i)=>({id:`q${i+1}`,question,category:interviewCategories[i].category,order:i+1}))}
 const samples=["I am a computer science student interested in building useful services.\nIn our capstone project, I worked with my team to develop an English interview practice service.","I am motivated by learning new skills and seeing our work help other people.","I listened to each team member and helped us agree on a shared goal.","We broke the problem into smaller tasks and tested our solution step by step.",""]
-const transcripts={session_id:session.id,is_dummy:true,answers:session.questions.map((q,i)=>({question_id:q.id,transcript:samples[i]}))}
+let transcripts={session_id:session.id,is_dummy:true,answers:session.questions.map((q,i)=>({question_id:q.id,transcript:samples[i]}))}
+const scores=Object.fromEntries(scoreMetrics.map(({key})=>[key,{raw:0,percentile:50,band:'중'}]))
+let result={session_id:session.id,is_dummy:true,session:{scores},videos:session.questions.map((q,i)=>({question_id:q.id,question:q.question,category:q.category,scores,transcript:samples[i]}))}
+const savedId=new URLSearchParams(location.search).get('session')
+if(savedId && /^[a-f0-9]{32}$/.test(savedId)) {
+  const response=await fetch(`/api/interviews/${savedId}/result`)
+  if(!response.ok) throw new Error('저장된 결과를 불러오지 못했어요.')
+  result=await response.json()
+  session={id:savedId,questions:result.videos.map((v,i)=>({id:v.question_id,question:v.question,category:interviewCategories.find(c=>c.id===v.category)?.category||v.category,order:i+1}))}
+  transcripts={session_id:savedId,is_dummy:result.is_dummy,answers:result.videos.map(v=>({question_id:v.question_id,transcript:v.transcript}))}
+}
+const answers=session.questions.map((q,i)=>({questionId:q.id,duration:result.videos[i]?.stats?.audio?.duration_sec||60}))
 const root=createRoot(document.querySelector('#root'))
-const render=(phase)=>root.render(React.createElement(Analysis,{session,transcripts:phase==='stt'?null:transcripts,error:phase==='error'?'평가 서버에 연결하지 못했어요.': '',onRetry:()=>render('texts'),onBack:()=>render('stt')}))
+const render=(phase)=>root.render(React.createElement(Analysis,{session,answers,transcripts:phase==='stt'?null:transcripts,result:['complete','feedback'].includes(phase)?result:null,feedbackLoading:phase==='feedback',error:phase==='error'?'평가 서버에 연결하지 못했어요.': '',onRetry:()=>render('texts')}))
 document.querySelector('#stt').onclick=()=>render('stt')
 document.querySelector('#texts').onclick=()=>render('texts')
 document.querySelector('#error').onclick=()=>render('error')
-render('stt')
+document.querySelector('#complete').onclick=()=>render('complete')
+document.querySelector('#feedback').onclick=()=>render('feedback')
+const settle=()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))
+document.querySelector('#checks').onclick=async()=>{
+  const output=document.querySelector('#check-result')
+  const assert=(condition,message)=>{if(!condition)throw new Error(message)}
+  const click=async(selector)=>{document.querySelector(selector).click();await settle()}
+  try {
+    render('stt'); await settle()
+    await click('#analysis-tab-videos')
+    await click('#analysis-tab-texts')
+    assert(document.querySelector('#analysis-panel-texts').textContent.includes('답변 텍스트를 준비하고 있어요'),'STT 대기 안내')
+    render('texts'); await settle()
+    assert(document.querySelector('#analysis-tab-texts').getAttribute('aria-selected')==='true','STT 완료 시 선택 탭 유지')
+    await click('.analysis-transcript-list > button:nth-of-type(3)')
+    render('complete'); await settle()
+    assert(document.querySelector('#analysis-tab-texts').getAttribute('aria-selected')==='true','분석 완료 시 자동 이동 방지')
+    await click('#analysis-tab-videos')
+    assert(document.querySelector('.review-question h2').textContent===session.questions[2].question,'영상·텍스트 질문 선택 공유')
+    const video=document.querySelector('#analysis-panel-videos video')
+    let paused=false; const originalPause=video.pause
+    video.pause=()=>{paused=true;originalPause.call(video)}
+    await click('#analysis-tab-results')
+    video.pause=originalPause
+    assert(paused,'탭 전환 시 영상 일시정지')
+    assert(document.querySelector('#analysis-panel-videos').hidden,'비활성 영상 숨김')
+    assert(!document.querySelector('#analysis-panel-results').hidden,'결과 탭 표시')
+    assert(!!document.querySelector('#analysis-panel-results .result-summary'),'결과 내용 표시')
+    const tab=document.querySelector('#analysis-tab-results')
+    tab.dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowRight',bubbles:true}));await settle()
+    assert(document.activeElement===document.querySelector('#analysis-tab-videos'),'키보드 탭 탐색')
+    render('error');await settle()
+    assert(!!document.querySelector('[role="alert"]'),'오류 및 재시도 안내')
+    await click('.analysis-actions button')
+    assert(!document.querySelector('[role="alert"]'),'재시도 후 오류 해제')
+    output.textContent='PASS · 대기/완료/오류/선택 유지/영상 정지/키보드 확인'
+    output.style.color='#216c45'
+  } catch(error) {output.textContent='FAIL · '+error.message;output.style.color='#a03b47'}
+}
+render(new URLSearchParams(location.search).get('phase')==='complete'?'complete':'stt')
 </script>
 </html>
